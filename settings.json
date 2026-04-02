@@ -1,0 +1,4 @@
+{
+  "python.analysis.extraPaths": ["./shoplift_detector"],
+  "python.autoComplete.extraPaths": ["./shoplift_detector"]
+}

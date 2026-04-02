@@ -1,0 +1,14 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.env
+
+*.pt
+*.pth
+app/static/alerts/*
+!app/static/alerts/.gitkeep
+
+.DS_Store
+.env
