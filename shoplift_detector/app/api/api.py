@@ -29,7 +29,28 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+def safe_update_display_queue(frame):
+    """
+    AI-ийн зурсан (хүрээтэй) дүрсийг глобал хувьсагч болон 
+    Queue руу нэгэн зэрэг шинэчлэх.
+    """
+    global latest_mac_frame # Глобал хувьсагчийг ашиглана гэдгээ хэлнэ
+    
+    if frame is None:
+        return
 
+    # 1. Стриминг хийж буй глобал хувьсагчийг AI-ийн зурсан дүрсээр солих
+    latest_mac_frame = frame 
+
+    # 2. Queue-г шинэчлэх (байгаа бол)
+    try:
+        try:
+            web_display_queue.get_nowait()
+        except queue.Empty:
+            pass
+        web_display_queue.put_nowait(frame)
+    except Exception:
+        pass
 
 async def generate_frames():
     """Камерын дүрсийг оригиналь хэмжээгээр нь, харьцаа алдагдуулахгүй харуулах"""
@@ -81,7 +102,6 @@ async def generate_frames():
             # Алдаа гарвал зогсолтгүй, түр хүлээгээд үргэлжлүүлнэ
             print(f"Streaming Error: {e}")
             await asyncio.sleep(0.1)
-
 @app.post("/token")
 async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends()):
     """Хэрэглэгч нэвтэрч JWT токен авах"""
