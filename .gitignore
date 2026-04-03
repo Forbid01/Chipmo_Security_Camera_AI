@@ -11,3 +11,5 @@ app/static/alerts/*
 !app/static/alerts/.gitkeep
 
 .DS_Store
+
+shoplift_detector/alerts/*
