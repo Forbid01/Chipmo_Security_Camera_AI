@@ -139,13 +139,6 @@ class ShopliftDetector:
             del self.tracker_history[tid]
             self.last_alert_time.pop(tid, None)
 
-        if stale_ids:
-            print(f"[Tracker] {len(stale_ids)} хуучин track цэвэрлэгдлээ.")
-
-    # ------------------------------------------------------------------ #
-    #  Үндсэн inference давталт
-    # ------------------------------------------------------------------ #
-
     def run_inference(self):
         while True:
             try:
@@ -266,6 +259,5 @@ def ai_inference():
     device = "mps" if torch.backends.mps.is_available() else \
              "cuda" if torch.cuda.is_available() else "cpu"
     print(f"[AI] Төхөөрөмж: {device}")
-
     detector = ShopliftDetector(device_type=device)
     detector.run_inference()
