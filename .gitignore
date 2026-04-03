@@ -13,3 +13,4 @@ app/static/alerts/*
 .DS_Store
 
 shoplift_detector/alerts/*
+shoplift_detector/faces/*
