@@ -5,15 +5,15 @@ from collections import deque
 VIDEO_BUFFER_MAXLEN = 150
 
 video_buffer = deque(maxlen=VIDEO_BUFFER_MAXLEN)
-ai_input_queue = queue.Queue(maxsize=1)
+ai_input_queue = queue.Queue(maxsize=4)
 web_display_queue = queue.Queue(maxsize=1)
 alert_queue = queue.Queue()
 
 latest_mac_frame = None
 latest_phone_frame = None
+latest_axis_frame = None
 
 buffer_lock = threading.Lock()
-# display_lock-г УСТГАВ — asyncio-той зөрчилддөг байсан
 
 
 def add_to_video_buffer(frame):
@@ -36,16 +36,13 @@ def clear_all_queues():
                 break
 
 
-def safe_update_display_queue(frame):
-    """
-    AI-ийн border зурсан frame-ийг latest_mac_frame-д шууд хадгална.
-    CPython-д numpy array assignment нь GIL-ээр хамгаалагддаг тул
-    тусдаа lock шаардлагагүй.
-    """
-    global latest_mac_frame
+def safe_update_display_queue(frame, source: str = "Mac-Camera"):  # ← source нэмэгдсэн
+    global latest_mac_frame, latest_axis_frame
 
     if frame is None:
         return
 
-    # GIL-ийн ачаар энэ assignment атомик — lock шаардлагагүй
-    latest_mac_frame = frame
+    if source == "Mac-Camera":
+        latest_mac_frame = frame
+    elif source == "Axis-Camera":
+        latest_axis_frame = frame

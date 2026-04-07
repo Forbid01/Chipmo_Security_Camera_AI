@@ -24,13 +24,13 @@ except ImportError:
 STALE_TRACK_FRAMES  = 150
 SCORE_DECAY         = 0.98
 ALERT_COOLDOWN      = 15
-SCORE_ALERT_TRIGGER = 60  # ← Өндөр байх тусам алдаа бага
+SCORE_ALERT_TRIGGER = 80  # ← Өндөр байх тусам алдаа бага
 
 # --- Оноо өгөх систем ---
 SCORE_LOOKING_AROUND   = 1.5   # Орчноо эргэн харах
 SCORE_ITEM_PICKUP      = 15.0  # Барааг гараар хүрэх
 SCORE_BODY_BLOCK       = 3.0   # Биеэр бараагаа далдлах
-SCORE_CROUCH           = 2.0   # Бөхийх (далдлах зорилгоор)
+SCORE_CROUCH           = 1.0   # Бөхийх (далдлах зорилгоор)
 SCORE_WRIST_TO_TORSO   = 5.0   # Гарыг биеийн дотогш татах
 SCORE_RAPID_MOVEMENT   = 1.5   # Гарын хурдан хөдөлгөөн
 
@@ -185,9 +185,12 @@ class ShopliftDetector:
 
         # ④ Бөхийх — хип мөрний доор хэт ойртсон (өндрийн 30%-иас бага зай)
         if hip_cy is not None and shoulder_cx is not None:
-            if self._keypoint_valid(l_shoulder):
-                torso_h = abs(hip_cy - l_shoulder[1])
-                if torso_h < person_h * 0.3:
+            torso_h = abs(hip_cy - l_shoulder[1])
+            if torso_h < person_h * 0.15:
+                if curr["holding"]:
+                    score_delta += 5.0
+                    reasons.append(" Бөхийж бараа нуух")
+                else:
                     score_delta += SCORE_CROUCH
                     reasons.append(" Бөхийх")
 
@@ -217,28 +220,37 @@ class ShopliftDetector:
                     # Хэвийн хөдөлгөөн person_h * 0.05-аас бага
                     if speed > person_h * 0.08:
                         score_delta += SCORE_RAPID_MOVEMENT
-                        reasons.append("⚡ Хурдан хөдөлгөөн")
+                        reasons.append("Хурдан хөдөлгөөн")
                 curr[key] = tuple(wrist)
 
         return score_delta, reasons
-
     def run_inference(self):
-        frame_idx = 0
-        last_display_frame = None
+        frame_counters = {
+                "Mac-Camera": 0,
+                "Axis-Camera": 0,
+        }
+        last_display_frames = {
+            "Mac-Camera": None,
+            "Axis-Camera": None,
+        }
 
         while True:
             try:
-                frame = ai_input_queue.get(timeout=2)
-            except queue.Empty:
+                data = ai_input_queue.get(timeout=2)
+                frame = data["frame"]
+                source_name = data["source"]
+            except (queue.Empty, TypeError, KeyError):
                 continue
-
-            frame_idx += 1
+            
+            frame_counters[source_name] = frame_counters.get(source_name, 0) + 1
+            frame_idx = frame_counters[source_name]
 
             if frame_idx % 2 != 0:
-                if last_display_frame is not None:
-                    safe_update_display_queue(last_display_frame)
-                else:
-                    safe_update_display_queue(frame)
+                prev = last_display_frames.get(source_name)
+                safe_update_display_queue(
+                    prev if prev is not None else frame,
+                    source=source_name
+                )
                 continue
 
             display_frame = frame.copy()
@@ -296,7 +308,6 @@ class ShopliftDetector:
                     else:
                         curr["score"] = max(0.0, curr["score"] * 0.999)
 
-                    # Шинжилгээ
                     delta, reasons = self._analyze_behavior(
                         curr, keypoints[i], person_h, expensive_items
                     )
@@ -304,7 +315,6 @@ class ShopliftDetector:
                     if reasons:
                         curr["last_reasons"] = reasons
 
-                    # Alert шалгах
                     if curr["score"] >= SCORE_ALERT_TRIGGER:
                         last_alert = self.last_alert_time.get(yolo_id, 0)
                         if current_time - last_alert > ALERT_COOLDOWN:
@@ -320,7 +330,6 @@ class ShopliftDetector:
                             curr["concealment_frames"] = 0
                             curr["last_reasons"] = []
 
-                    # --- Визуал ---
                     if curr["score"] < 25:
                         border_color, status_text = (0, 255, 0), "NORMAL"
                     elif curr["score"] < 55:
@@ -329,8 +338,6 @@ class ShopliftDetector:
                         border_color, status_text = (0, 0, 255), "THEFT DETECTED"
 
                     cv2.rectangle(display_frame, (x1, y1), (x2, y2), border_color, 2)
-
-                    # Үндсэн мэдээлэл
                     label = (
                         f"ID:{yolo_id} | {status_text} | "
                         f"S:{int(curr['score'])} F:{curr['concealment_frames']}"
@@ -348,7 +355,6 @@ class ShopliftDetector:
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1, cv2.LINE_AA
                     )
 
-                    # Сэжигтэй үед шалтгааныг дэлгэцэнд харуулах
                     if curr["score"] >= 25 and curr["last_reasons"]:
                         reason_label = " | ".join(curr["last_reasons"][:2])
                         cv2.putText(
@@ -357,10 +363,8 @@ class ShopliftDetector:
                             cv2.FONT_HERSHEY_SIMPLEX, 0.4, border_color, 1, cv2.LINE_AA
                         )
 
-            last_display_frame = display_frame
-            safe_update_display_queue(display_frame)
-
-
+            last_display_frames[source_name] = display_frame
+            safe_update_display_queue(display_frame, source=source_name)
 def ai_inference():
     device = (
         "mps" if torch.backends.mps.is_available()

@@ -13,6 +13,8 @@ async def gen_frames(camera_id: str):
             frame = state.latest_mac_frame
         elif camera_id == "phone":
             frame = state.latest_phone_frame
+        elif camera_id == "axis":
+            frame = state.latest_axis_frame
         else:
             frame = None
 
@@ -34,7 +36,7 @@ async def gen_frames(camera_id: str):
 
 @router.get("/video_feed/{camera_id}")
 async def video_feed(camera_id: str):
-    if camera_id not in ["mac", "phone", "drone"]:
+    if camera_id not in ["mac", "phone", "axis"]:
         raise HTTPException(status_code=404, detail="Камер олдсонгүй")
 
     return StreamingResponse(

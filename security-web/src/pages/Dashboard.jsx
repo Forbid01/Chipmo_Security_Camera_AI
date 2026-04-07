@@ -133,6 +133,18 @@ function Dashboard() {
               <Building2 size={20} />
               <span className="text-sm font-bold tracking-tight">Салбар 2</span>
             </button>
+
+            <button 
+                onClick={() => setActiveCamera('axis')}
+                className={`w-full flex items-center gap-4 px-4 py-4 rounded-2xl transition-all duration-300 border ${
+                    activeCamera === 'axis' 
+                    ? 'bg-purple-500/10 border-purple-500/40 text-purple-400 shadow-[0_0_20px_rgba(168,85,247,0.1)]' 
+                    : 'bg-transparent border-transparent text-slate-500 hover:bg-slate-800/40 hover:text-slate-300'
+                }`}
+            >
+              <Building2 size={20} />
+              <span className="text-sm font-bold tracking-tight">Салбар 3</span>
+            </button>
           </div>
 
           <div className="space-y-2">
@@ -164,7 +176,7 @@ function Dashboard() {
               <div className="flex justify-between items-end px-2">
                 <div>
                   <h2 className="text-3xl font-black text-white uppercase tracking-tight italic">
-                    {activeCamera === 'mac' ? 'Main Facility' : 'Remote Storage'}
+                    {activeCamera === 'mac' ? 'Main Facility' : activeCamera === 'phone' ? 'Remote Storage' : 'Axis Camera'}
                   </h2>
                   <p className="text-xs font-mono text-blue-500/80 uppercase tracking-widest mt-1">
                     AI Neural Engine // Node_{activeCamera.toUpperCase()}

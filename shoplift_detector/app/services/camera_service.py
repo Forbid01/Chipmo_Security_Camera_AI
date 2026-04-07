@@ -1,18 +1,18 @@
-# app/services/camera_service.py
-
 import cv2
 import time
 import queue
 import threading
 import app.core.state as state
 
-WIFI_CAMERA_URL = "http://192.168.0.207:4747/video"
+WIFI_CAMERA_URL  = "http://192.168.0.207:4747/video"
+AXIS_CAMERA_URL  = "http://185.194.123.84:8001/axis-cgi/mjpg/video.cgi"
 MAC_CAMERA_INDEX = 0
 
 
 def capture_stream(source, camera_name):
     print(f" {camera_name} холбогдож байна: {source}")
     cap = cv2.VideoCapture(source)
+    cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
 
     if not cap.isOpened():
         print(f" {camera_name} Error: Холболт амжилтгүй.")
@@ -30,25 +30,31 @@ def capture_stream(source, camera_name):
                 cap.open(source)
                 continue
 
+            # 1. Стриминг frame шинэчлэх
             if camera_name == "Mac-Camera":
-                # AI боловсруулаагүй бол камерын frame-г харуулна
-                # AI боловсруулсан бол safe_update_display_queue давж бичнэ
                 if state.latest_mac_frame is None:
                     state.latest_mac_frame = frame.copy()
-                # ← УСТГАСАН: else байхгүй, AI-ийн frame-г дарахгүй
-            else:
-                # Phone камер AI-д ордоггүй тул үргэлж шинэчлэнэ
+            elif camera_name == "Phone-Camera":
                 state.latest_phone_frame = frame.copy()
+            elif camera_name == "Axis-Camera":
+                if state.latest_axis_frame is None:
+                    state.latest_axis_frame = frame.copy()
 
-            # AI queue руу үргэлж илгээнэ
-            if not state.ai_input_queue.full():
-                try:
-                    state.ai_input_queue.put(frame.copy(), block=False)
-                except queue.Full:
-                    pass
+            # 2. AI руу илгээх (Mac болон Axis)
+            if camera_name in ["Mac-Camera", "Axis-Camera"]:
+                if not state.ai_input_queue.full():
+                    try:
+                        state.ai_input_queue.put({
+                            "frame": frame.copy(),
+                            "source": camera_name
+                        }, block=False)
+                    except queue.Full:
+                        pass
 
-            with state.buffer_lock:
-                state.video_buffer.append(frame.copy())
+            # 3. Бичлэгийн буфер
+            if camera_name in ["Mac-Camera", "Axis-Camera"]:
+                with state.buffer_lock:
+                    state.video_buffer.append(frame.copy())
 
             time.sleep(0.02)
 
@@ -70,7 +76,16 @@ def video_capture():
         args=(WIFI_CAMERA_URL, "Phone-Camera"),
         daemon=True
     )
+    axis_thread = threading.Thread(
+        target=capture_stream,
+        args=(AXIS_CAMERA_URL, "Axis-Camera"),
+        daemon=True
+    )
 
     mac_thread.start()
     phone_thread.start()
+    axis_thread.start()
+
     mac_thread.join()
+    phone_thread.join()
+    axis_thread.join()
