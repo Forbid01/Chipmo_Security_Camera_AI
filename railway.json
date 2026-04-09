@@ -4,7 +4,7 @@
     "builder": "NIXPACKS"
   },
   "deploy": {
-    "startCommand": "python shoplift_detector/main.py",
+    "startCommand": "python3 shoplift_detector/main.py",
     "restartPolicyType": "ON_FAILURE",
     "healthCheckPath": "/health"
   },
