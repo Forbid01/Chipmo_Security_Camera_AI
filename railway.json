@@ -1,0 +1,26 @@
+{
+  "$schema": "https://railway.app/railway.schema.json",
+  "build": {
+    "builder": "NIXPACKS"
+  },
+  "deploy": {
+    "startCommand": "python shoplift_detector/main.py",
+    "restartPolicyType": "ON_FAILURE",
+    "healthCheckPath": "/health"
+  },
+  "nixpacks": {
+    "phases": {
+      "setup": {
+        "aptPkgs": [
+          "libgl1-mesa-glx",
+          "libglib2.0-0",
+          "libxcb1",
+          "libx11-6",
+          "libxext6",
+          "libsm6",
+          "libxrender1"
+        ]
+      }
+    }
+  }
+}
