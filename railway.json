@@ -3,16 +3,26 @@
   "build": {
     "builder": "NIXPACKS"
   },
+  "deploy": {
+    "startCommand": "/app/.venv/bin/python3 shoplift_detector/main.py",
+    "restartPolicyType": "ON_FAILURE"
+  },
   "nixpacks": {
     "phases": {
       "setup": {
         "aptPkgs": [
           "libgl1",
           "libglib2.0-0",
-          "libxcb1",
+          "libstdc++6",
           "libx11-6",
-          "libxrender1",
-          "libxext6"
+          "libxcb1"
+        ]
+      },
+      "install": {
+        "cmds": [
+          "python3 -m venv /app/.venv",
+          "/app/.venv/bin/pip install --upgrade pip",
+          "/app/.venv/bin/pip install -r requirements.txt"
         ]
       }
     }
