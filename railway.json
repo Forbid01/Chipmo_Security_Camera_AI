@@ -5,20 +5,27 @@
   },
   "deploy": {
     "startCommand": "python3 shoplift_detector/main.py",
-    "restartPolicyType": "ON_FAILURE",
-    "healthCheckPath": "/health"
+    "restartPolicyType": "ON_FAILURE"
   },
   "nixpacks": {
     "phases": {
       "setup": {
+        "nixPkgs": [
+          "python311",
+          "gcc",
+          "libxcb",
+          "libX11",
+          "glib"
+        ],
         "aptPkgs": [
           "libgl1-mesa-glx",
-          "libglib2.0-0",
-          "libxcb1",
-          "libx11-6",
-          "libxext6",
-          "libsm6",
-          "libxrender1"
+          "libglib2.0-0"
+        ]
+      },
+      "install": {
+        "cmds": [
+          "python3 -m venv .venv",
+          ". .venv/bin/activate && pip install -r requirements.txt"
         ]
       }
     }
