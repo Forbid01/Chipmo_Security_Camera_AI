@@ -14,7 +14,9 @@
         "aptPkgs": [
           "libgl1",
           "libglib2.0-0",
-          "libstdc++6"
+          "libstdc++6",
+          "libx11-6",
+          "libxcb1"
         ]
       },
       "install": {
