@@ -4,7 +4,7 @@
     "builder": "NIXPACKS"
   },
   "deploy": {
-    "startCommand": "/app/.venv/bin/python3 shoplift_detector/main.py",
+    "startCommand": "export LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:/nix/store/$(ls -d /nix/store/*stdenv-linux*/lib | head -n 1):$LD_LIBRARY_PATH && /app/.venv/bin/python3 shoplift_detector/main.py",
     "restartPolicyType": "ON_FAILURE"
   },
   "nixpacks": {
