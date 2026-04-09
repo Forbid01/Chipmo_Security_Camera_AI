@@ -4,7 +4,7 @@
     "builder": "NIXPACKS"
   },
   "deploy": {
-    "startCommand": "python3 shoplift_detector/main.py",
+    "startCommand": ". .venv/bin/activate && python3 shoplift_detector/main.py",
     "restartPolicyType": "ON_FAILURE"
   },
   "nixpacks": {
@@ -15,7 +15,8 @@
           "gcc",
           "libxcb",
           "libX11",
-          "glib"
+          "glib",
+          "ffmpeg"
         ],
         "aptPkgs": [
           "libgl1-mesa-glx",
@@ -25,7 +26,7 @@
       "install": {
         "cmds": [
           "python3 -m venv .venv",
-          ". .venv/bin/activate && pip install -r requirements.txt"
+          ". .venv/bin/activate && pip install --upgrade pip && pip install -r requirements.txt"
         ]
       }
     }
