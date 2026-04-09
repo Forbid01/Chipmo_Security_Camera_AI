@@ -3,14 +3,19 @@
   "build": {
     "builder": "NIXPACKS"
   },
-  "deploy": {
-    "startCommand": "export LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH && /app/.venv/bin/python3 shoplift_detector/main.py"
-  },
   "nixpacks": {
     "phases": {
       "setup": {
-        "nixPkgs": ["python311", "gcc", "ffmpeg"],
-        "aptPkgs": ["libgl1", "libglib2.0-0", "libstdc++6"]
+        "nixPkgs": [
+          "python311",
+          "gcc",
+          "ffmpeg"
+        ],
+        "aptPkgs": [
+          "libgl1",
+          "libglib2.0-0",
+          "libstdc++6"
+        ]
       },
       "install": {
         "cmds": [
@@ -19,6 +24,9 @@
           "/app/.venv/bin/pip install -r requirements.txt"
         ]
       }
+    },
+    "start": {
+      "cmd": "export LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH && /app/.venv/bin/python3 shoplift_detector/main.py"
     }
   }
 }
