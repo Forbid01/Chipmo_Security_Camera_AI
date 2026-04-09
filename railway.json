@@ -11,11 +11,11 @@
     "phases": {
       "setup": {
         "nixPkgs": [
-          "python311",
+          "python3",
           "gcc",
           "libxcb",
-          "libX11",
-          "glib"
+          "glib",
+          "libGL"
         ],
         "aptPkgs": [
           "libgl1-mesa-glx",
@@ -24,8 +24,8 @@
       },
       "install": {
         "cmds": [
-          "python3 -m venv .venv",
-          ". .venv/bin/activate && pip install -r requirements.txt"
+          "pip install --upgrade pip",
+          "pip install -r requirements.txt"
         ]
       }
     }
