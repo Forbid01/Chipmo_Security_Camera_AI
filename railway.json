@@ -6,19 +6,8 @@
   "nixpacks": {
     "phases": {
       "setup": {
-        "nixPkgs": [
-          "nodejs_18",
-          "python311",
-          "gcc",
-          "ffmpeg"
-        ],
-        "aptPkgs": [
-          "libgl1",
-          "libglib2.0-0",
-          "libstdc++6",
-          "libx11-6",
-          "libxcb1"
-        ]
+        "nixPkgs": ["nodejs_18", "python311", "gcc", "ffmpeg"],
+        "aptPkgs": ["libgl1", "libglib2.0-0", "libstdc++6"]
       },
       "install": {
         "cmds": [
