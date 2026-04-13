@@ -10,3 +10,5 @@ numpy
 onnx
 onnxruntime
 python-dotenv
+PyJWT
+passlib[bcrypt]
