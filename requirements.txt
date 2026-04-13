@@ -1,19 +1,33 @@
-ultralytics
-lap>=0.5.12
-torch
-torchvision
+# --- Core Framework ---
 fastapi
 uvicorn
 python-multipart
-psycopg2-binary
+python-dotenv
+slowapi
+
+# --- AI & Computer Vision ---
+ultralytics
 opencv-python-headless
 numpy
+torch
+torchvision
+lap>=0.5.12
 onnx
 onnxruntime
-python-dotenv
+
+# --- Database & Auth ---
+psycopg2-binary
 passlib[bcrypt]==1.7.4
 bcrypt==4.0.1
 PyJWT==2.8.0
 python-jose[cryptography]
 email-validator
-slowapi
+
+# --- Networking & HTTP ---
+httpx==0.24.0
+
+# --- Testing ---
+pytest
+pytest-asyncio
+pytest-cov
+pytest-mock

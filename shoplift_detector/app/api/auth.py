@@ -138,7 +138,7 @@ async def get_organizations(current_user: dict = Depends(AuthService.get_current
     """Бүх байгууллагын жагсаалтыг харах"""
     if current_user.get("role") != "super_admin":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Эрх хүрэлцэхгүй")
-    return AuthService.get_all_organizations()
+    return await AuthService.get_all_organizations()
 
 @router.post("/admin/organizations")
 async def create_org(
@@ -173,7 +173,7 @@ async def get_cameras(current_user: dict = Depends(AuthService.get_current_user)
     """Бүх камерын жагсаалтыг харах"""
     if current_user.get("role") != "super_admin":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Эрх хүрэлцэхгүй")
-    return AuthService.get_all_cameras()
+    return await AuthService.get_all_cameras()
 
 @router.post("/admin/cameras")
 async def add_camera_to_org(

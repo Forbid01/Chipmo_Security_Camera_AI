@@ -4,9 +4,11 @@ import threading
 import uvicorn
 import logging
 import logging.handlers
+from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from contextlib import asynccontextmanager
+from app.db.repository.users import UserRepository
 
 # Logging тохиргоо
 logging.basicConfig(
@@ -47,12 +49,26 @@ def start_background_tasks():
     except Exception as e:
         logger.error(f"Error starting background services: {e}")
 
-# FastAPI Startup event (Шинэ хувилбар дээр lifespan ашиглахыг зөвлөдөг)
-@app.on_event("startup")
-async def startup_event():
-    start_background_tasks()
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # [STARTUP]
+    logger.info("Initializing database...")
+    try:
+        repo = UserRepository()
+        await repo._create_table()
+    except Exception as e:
+        logger.error(f"DB Init Error: {e}")
 
-# --- STATIC FILES & FRONTEND ---
+    logger.info("Starting background tasks...")
+    start_background_tasks()
+    
+    yield
+
+    # [SHUTDOWN]
+    logger.info("Shutting down Chipmo AI...")
+
+# Lifespan-ыг апп-д тохируулах
+app.router.lifespan_context = lifespan
 
 ALERTS_DIR = os.path.join(BASE_DIR, "alerts")
 if not os.path.exists(ALERTS_DIR):

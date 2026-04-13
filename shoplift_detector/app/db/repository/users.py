@@ -9,9 +9,8 @@ logger = logging.getLogger(__name__)
 class UserRepository(BaseDB):
     def __init__(self):
         super().__init__()
-        self._create_table()
 
-    def _create_table(self):
+    async def _create_table(self):
         """Өгөгдлийн сангийн хүснэгтүүдийг үүсгэх (Multi-tenant бүтэц)"""
         queries = [
             # 1. Байгууллагууд (Organizations)
@@ -70,48 +69,48 @@ class UserRepository(BaseDB):
 
     # --- ХЭРЭГЛЭГЧИЙН ҮЙЛДЛҮҮД ---
 
-    def create(self, username, email, phone_number, hashed_password, full_name=None, organization_id=None, role='user') -> Optional[int]:
+    async def create(self, username, email, phone_number, hashed_password, full_name=None, organization_id=None, role='user') -> Optional[int]:
         query = """
         INSERT INTO users (username, email, phone_number, hashed_password, full_name, organization_id, role)
         VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING id;
         """
         params = (username, email, phone_number, hashed_password, full_name, organization_id, role)
-        return self._execute_returning_id(query, params)
+        return await self._execute_returning_id(query, params)
 
-    def get_by_identifier(self, identifier: str) -> Optional[Dict[str, Any]]:
+    async def get_by_identifier(self, identifier: str) -> Optional[Dict[str, Any]]:
         query = "SELECT * FROM users WHERE (username = %s OR email = %s) AND is_active = TRUE"
-        return self._execute_fetch_one(query, (identifier, identifier))
+        return await self._execute_fetch_one(query, (identifier, identifier))
 
-    def get_by_email(self, email: str) -> Optional[Dict[str, Any]]:
+    async def get_by_email(self, email: str) -> Optional[Dict[str, Any]]:
         query = "SELECT * FROM users WHERE email = %s AND is_active = TRUE"
-        return self._execute_fetch_one(query, (email,))
+        return await self._execute_fetch_one(query, (email,))
 
     # --- БАЙГУУЛЛАГА (ADMIN) ҮЙЛДЛҮҮД ---
 
-    def create_organization(self, name: str) -> Optional[int]:
+    async def create_organization(self, name: str) -> Optional[int]:
         query = "INSERT INTO organizations (name) VALUES (%s) RETURNING id;"
-        return self._execute_returning_id(query, (name,))
+        return await self._execute_returning_id(query, (name,))
 
-    def get_all_organizations(self) -> List[Dict[str, Any]]:
+    async def get_all_organizations(self) -> List[Dict[str, Any]]:
         query = "SELECT id, name, created_at FROM organizations ORDER BY created_at DESC;"
-        return self._execute_fetch_all(query)
+        return await self._execute_fetch_all(query)
 
-    def delete_organization(self, org_id: int) -> bool:
+    async def delete_organization(self, org_id: int) -> bool:
         """Байгууллага устгах (Камерууд нь CASCADE-ээр хамт устгагдана)"""
         query = "DELETE FROM organizations WHERE id = %s"
-        return self._execute_update(query, (org_id,))
+        return await self._execute_update(query, (org_id,))
 
     # --- КАМЕРЫН ҮЙЛДЛҮҮД ---
 
-    def add_camera(self, name, url, cam_type, org_id) -> Optional[int]:
+    async def add_camera(self, name, url, cam_type, org_id) -> Optional[int]:
         query = """
         INSERT INTO cameras (name, url, type, organization_id)
         VALUES (%s, %s, %s, %s) RETURNING id;
         """
         params = (name, url, cam_type, org_id)
-        return self._execute_returning_id(query, params)
+        return await self._execute_returning_id(query, params)
 
-    def get_all_cameras(self) -> List[Dict[str, Any]]:
+    async def get_all_cameras(self) -> List[Dict[str, Any]]:
         """Бүх камерыг байгууллагын нэртэй нь хамт авах (Admin Dashboard-д зориулсан)"""
         query = """
         SELECT c.*, o.name as organization_name 
@@ -119,29 +118,29 @@ class UserRepository(BaseDB):
         LEFT JOIN organizations o ON c.organization_id = o.id 
         ORDER BY c.created_at DESC;
         """
-        return self._execute_fetch_all(query)
+        return await self._execute_fetch_all(query)
 
-    def delete_camera(self, cam_id: int) -> bool:
+    async def delete_camera(self, cam_id: int) -> bool:
         query = "DELETE FROM cameras WHERE id = %s"
-        return self._execute_update(query, (cam_id,))
+        return await self._execute_update(query, (cam_id,))
 
     # --- НУУЦ ҮГ СЭРГЭЭХ ---
 
-    def update_recovery_data(self, user_id: int, code: str, expiry: datetime) -> bool:
+    async def update_recovery_data(self, user_id: int, code: str, expiry: datetime) -> bool:
         query = "UPDATE users SET recovery_code = %s, recovery_code_expires = %s WHERE id = %s"
-        return self._execute_update(query, (code, expiry, user_id))
+        return await self._execute_update(query, (code, expiry, user_id))
 
-    def clear_recovery_data(self, user_id: int) -> bool:
+    async def clear_recovery_data(self, user_id: int) -> bool:
         query = "UPDATE users SET recovery_code = NULL, recovery_code_expires = NULL WHERE id = %s"
-        return self._execute_update(query, (user_id,))
+        return await self._execute_update(query, (user_id,))
 
-    def update_password(self, user_id: int, new_hashed_password: str) -> bool:
+    async def update_password(self, user_id: int, new_hashed_password: str) -> bool:
         query = "UPDATE users SET hashed_password = %s WHERE id = %s"
-        return self._execute_update(query, (new_hashed_password, user_id))
+        return await self._execute_update(query, (new_hashed_password, user_id))
 
     # --- ӨГӨГДЛИЙН САНГИЙН ТУСЛАХ ФУНКЦҮҮД (HELPERS) ---
 
-    def _execute_returning_id(self, query, params) -> Optional[int]:
+    async def _execute_returning_id(self, query, params) -> Optional[int]:
         conn = self._get_connection()
         if not conn:
             return None
@@ -157,7 +156,7 @@ class UserRepository(BaseDB):
         finally:
             self._return_connection(conn)
 
-    def _execute_fetch_one(self, query, params=None) -> Optional[Dict[str, Any]]:
+    async def _execute_fetch_one(self, query, params=None) -> Optional[Dict[str, Any]]:
         conn = self._get_connection()
         if not conn:
             return None
@@ -171,7 +170,7 @@ class UserRepository(BaseDB):
         finally:
             self._return_connection(conn)
 
-    def _execute_fetch_all(self, query, params=None) -> List[Dict[str, Any]]:
+    async def _execute_fetch_all(self, query, params=None) -> List[Dict[str, Any]]:
         conn = self._get_connection()
         if not conn:
             return []
@@ -185,7 +184,7 @@ class UserRepository(BaseDB):
         finally:
             self._return_connection(conn)
 
-    def _execute_update(self, query, params) -> bool:
+    async def _execute_update(self, query, params) -> bool:
         conn = self._get_connection()
         if not conn:
             return False

@@ -28,14 +28,14 @@ class AuthService:
     async def register_user(cls, username, email, password, phone_number=None, full_name=None, role="user"):
         """Шинэ хэрэглэгч бүртгэх"""
         validate_password_strength(password)
-        if user_repo.get_by_identifier(username) or user_repo.get_by_email(email):
+        if await user_repo.get_by_identifier(username) or await user_repo.get_by_email(email):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Хэрэглэгчийн нэр эсвэл имэйл бүртгэлтэй байна."
             )
         hashed_pwd = get_password_hash(password)
         # Repository-ийн create функц чинь 'role' хүлээж авдаг байх шаардлагатай
-        user_id = user_repo.create(
+        user_id = await user_repo.create(
             username=username, 
             email=email, 
             phone_number=phone_number, 
@@ -46,20 +46,20 @@ class AuthService:
         return user_id
 
     @classmethod
-    def authenticate_user(cls, identifier, password):
+    async def authenticate_user(cls, identifier, password):
         """Нэвтрэх үед хэрэглэгчийг баталгаажуулах"""
-        user = user_repo.get_by_identifier(identifier)
+        user = await user_repo.get_by_identifier(identifier)
         if not user or not verify_password(password, user['hashed_password']):
             return False
         return user
 
     @classmethod
-    def create_access_token(cls, data: dict):
+    async def create_access_token(cls, data: dict):
         """JWT Token үүсгэх"""
-        return create_access_token(data)
+        return await create_access_token(data)
 
     @staticmethod
-    def get_current_user(token: str = Depends(oauth2_scheme)):
+    async def get_current_user(token: str = Depends(oauth2_scheme)):
         """Токен уншиж хэрэглэгчийн мэдээллийг (role, org_id) буцаах"""
         try:
             payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
@@ -84,53 +84,53 @@ class AuthService:
     # --- АДМИН БОЛОН БАЙГУУЛЛАГЫН ҮЙЛДЛҮҮД (CRUD) ---
 
     @staticmethod
-    def create_organization(name: str):
+    async def create_organization(name: str):
         """Шинэ байгууллага үүсгэх"""
-        return user_repo.create_organization(name)
+        return await user_repo.create_organization(name)
 
     @staticmethod
-    def get_all_organizations():
+    async def get_all_organizations():
         """Бүх байгууллагын жагсаалтыг авах (DashboardAdmin-д хэрэгтэй)"""
-        return user_repo.get_all_organizations()
+        return await user_repo.get_all_organizations()
 
     @staticmethod
-    def delete_organization(org_id: int):
+    async def delete_organization(org_id: int):
         """Байгууллага устгах"""
-        return user_repo.delete_organization(org_id)
+        return await user_repo.delete_organization(org_id)
 
     @staticmethod
-    def add_camera(name, url, cam_type, org_id):
+    async def add_camera(name, url, cam_type, org_id):
         """Шинэ камер бүртгэх"""
-        return user_repo.add_camera(name, url, cam_type, org_id)
+        return await user_repo.add_camera(name, url, cam_type, org_id)
 
     @staticmethod
-    def get_all_cameras():
+    async def get_all_cameras():
         """Бүх камерын жагсаалтыг авах (DashboardAdmin-д хэрэгтэй)"""
-        return user_repo.get_all_cameras()
+        return await user_repo.get_all_cameras()
 
     @staticmethod
-    def delete_camera(cam_id: int):
+    async def delete_camera(cam_id: int):
         """Камер устгах"""
-        return user_repo.delete_camera(cam_id)
+        return await user_repo.delete_camera(cam_id)
 
     # --- НУУЦ ҮГ СЭРГЭЭХ ЛОГИК (OTP) ---
 
     @classmethod
     async def generate_recovery_code(cls, email: str):
-        user = user_repo.get_by_email(email)
+        user = await user_repo.get_by_email(email)
         if not user:
             return False
 
         otp_code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=8))
         expiry = datetime.now(timezone.utc) + timedelta(minutes=15)
 
-        user_repo.update_recovery_data(user['id'], otp_code, expiry)
+        await user_repo.update_recovery_data(user['id'], otp_code, expiry)
         success = await send_otp_email(email, otp_code)
         return success
 
     @classmethod
-    def verify_recovery_code(cls, email: str, code: str):
-        user = user_repo.get_by_email(email)
+    async def verify_recovery_code(cls, email: str, code: str):
+        user = await user_repo.get_by_email(email)
         if not user: return False
 
         db_code = user.get('recovery_code')
@@ -141,15 +141,15 @@ class AuthService:
         return False
 
     @classmethod
-    def reset_password(cls, email: str, code: str, new_password: str):
-        if not cls.verify_recovery_code(email, code):
+    async def reset_password(cls, email: str, code: str, new_password: str):
+        if not await cls.verify_recovery_code(email, code):
             return False
 
-        user = user_repo.get_by_email(email)
+        user = await user_repo.get_by_email(email)
         if not user: return False
 
         validate_password_strength(new_password)
         hashed_pwd = get_password_hash(new_password)
-        user_repo.update_password(user['id'], hashed_pwd)
-        user_repo.clear_recovery_data(user['id'])
+        await user_repo.update_password(user['id'], hashed_pwd)
+        await user_repo.clear_recovery_data(user['id'])
         return True
