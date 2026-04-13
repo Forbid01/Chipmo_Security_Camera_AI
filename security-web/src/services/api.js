@@ -9,6 +9,7 @@ export const api = axios.create({
   baseURL: API_BASE_URL,
 });
 
+// Request interceptor: Хүсэлт болгонд Токен автоматаар хавсаргана
 api.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem("token");
@@ -17,51 +18,74 @@ api.interceptors.request.use(
     }
     return config;
   },
-  (error) => {
-    return Promise.reject(error);
-  },
+  (error) => Promise.reject(error),
 );
 
-// --- НУУЦ ҮГ СЭРГЭЭХ (AUTH) АПИ-УУД ---
+// --- НЭВТРЭХ БОЛОН БҮРТГЭЛ ---
 
-/**
- * 1. Имэйл рүү OTP код илгээх хүсэлт
- */
+export const loginUser = async (username, password) => {
+  const formData = new FormData();
+  formData.append("username", username);
+  formData.append("password", password);
+
+  // FastAPI OAuth2PasswordRequestForm-д FormData хэрэгтэй байдаг
+  const response = await api.post("/token", formData);
+  return response.data;
+};
+
+// --- НУУЦ ҮГ СЭРГЭЭХ (AUTH) ---
+
 export const forgotPassword = async (email) => {
-  try {
-    const response = await api.post("/forgot-password", { email });
-    return response.data;
-  } catch (error) {
-    throw error.response?.data || error.message;
-  }
+  const response = await api.post("/auth/forgot-password", { email });
+  return response.data;
 };
 
-/**
- * 2. Хэрэглэгчийн оруулсан кодыг баталгаажуулах
- */
 export const verifyCode = async (email, code) => {
-  try {
-    const response = await api.post("/verify-code", { email, code });
-    return response.data;
-  } catch (error) {
-    throw error.response?.data || error.message;
-  }
+  const response = await api.post("/auth/verify-code", { email, code });
+  return response.data;
 };
 
-/**
- * 3. Шинэ нууц үгийг хадгалах
- */
 export const resetPassword = async (email, code, newPassword) => {
-  try {
-    const response = await api.post("/reset-password", {
-      email: email,
-      code: code,
-      new_password: newPassword, // Бэкенд дээр "new_password" гэж байгааг анхаарна уу
-    });
-    return response.data;
-  } catch (error) {
-    throw error.response?.data || error.message;
-  }
+  const response = await api.post("/auth/reset-password", {
+    email: email,
+    code: code,
+    new_password: newPassword,
+  });
+  return response.data;
+};
+
+// --- АДМИН ХЯНАЛТ (ORGANIZATIONS & CAMERAS) ---
+
+// Байгууллагууд
+export const getOrganizations = async () => {
+  const response = await api.get("/auth/admin/organizations");
+  return response.data;
+};
+
+export const createOrganization = async (name) => {
+  const response = await api.post("/auth/admin/organizations", { name });
+  return response.data;
+};
+
+export const deleteOrganization = async (id) => {
+  const response = await api.delete(`/auth/admin/organizations/${id}`);
+  return response.data;
+};
+
+// Камерууд
+export const getCameras = async () => {
+  const response = await api.get("/auth/admin/cameras");
+  return response.data;
+};
+
+export const addCamera = async (cameraData) => {
+  const response = await api.post("/auth/admin/cameras", cameraData);
+  return response.data;
+};
+
+export const deleteCamera = async (id) => {
+  const response = await api.delete(`/auth/admin/cameras/${id}`);
+  return response.data;
 };
 
 export default api;
