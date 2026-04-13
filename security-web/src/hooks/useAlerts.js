@@ -20,6 +20,7 @@ export const useAlerts = (refreshInterval = 3000) => {
   };
 
   useEffect(() => {
+    //1
     // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchAlerts();
     const interval = setInterval(fetchAlerts, refreshInterval);
