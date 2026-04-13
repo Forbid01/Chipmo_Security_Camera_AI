@@ -2,24 +2,25 @@ import sys
 import os
 import threading
 import uvicorn
-
-# Замын тохиргоо
-current_dir = os.path.dirname(os.path.abspath(__file__))
-if current_dir not in sys.path:
-    sys.path.insert(0, current_dir)
-
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
+from fastapi import FastAPI
 
-# Үндсэн FastAPI app-г api.py-аас импортлох
-from app.api.api import app
+# 1. Замын тохиргоог маш тодорхой болгох
+# main.py байгаа хавтас (Root эсвэл app хавтас)
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+if BASE_DIR not in sys.path:
+    sys.path.insert(0, BASE_DIR)
+
+# Үндсэн FastAPI app-г импортлох
+from app.api.api import app 
 
 # Үйлчилгээнүүдийг импортлох
 from app.services.camera_service import video_capture
 from app.services.alert_service import alert_worker
 from app.services.ai_service import ai_inference
 
-# Нэмэлт router-уудыг холбох
+# Router-уудыг холбох
 from app.api.auth import router as auth_router
 from app.api.password import router as password_router
 from app.api.camera import router as camera_router
@@ -28,44 +29,40 @@ app.include_router(auth_router)
 app.include_router(password_router)
 app.include_router(camera_router)
 
-# Тэмдэглэл: CORS api.py-д аль хэдийн тохируулагдсан тул давхардуулахгүй
+# --- FRONTEND ХОЛБОХ ХЭСЭГ (API-УУДЫН ДАРАА БАЙХ ЁСТОЙ) ---
 
-dist_path = os.path.join(current_dir, "dist")
+# dist хавтас main.py-тай ижил түвшинд байгаа гэж үзэв
+dist_path = os.path.join(BASE_DIR, "dist")
 
 if os.path.exists(dist_path):
-    # CSS, JS файлуудыг /assets замаар уншина
+    # CSS, JS файлуудыг холбох
     app.mount("/assets", StaticFiles(directory=os.path.join(dist_path, "assets")), name="assets")
 
-    # Вэб рүү ороход (/) шууд index.html-ийг өгнө
     @app.get("/{catchall:path}")
     async def serve_react_app(catchall: str):
-        # Хэрэв API биш бол React-ийн index.html-ийг буцаана (Single Page App routing)
-        if catchall.startswith("api") or catchall in ["video_feed", "forgot-password", "verify-code", "reset-password"]:
-             return None # API-ууд хэвийн ажиллана
+        # API хүсэлтүүд болон видео feed-ийг алгасах (Эдгээр нь замаар орж ирвэл React руу явуулахгүй)
+        api_endpoints = ["api", "video_feed", "forgot-password", "verify-code", "reset-password"]
+        if any(endpoint in catchall for endpoint in api_endpoints):
+            return None # FastAPI өөрийн router-ээрээ шийднэ
+            
         return FileResponse(os.path.join(dist_path, "index.html"))
 else:
-    print(" АНХААР: 'dist' хавтас олдсонгүй. Frontend ажиллахгүй байж магадгүй!")
+    print(f"!!! АНХААР: {dist_path} олдсонгүй. Frontend ажиллахгүй.")
+
+# --- СЕРВЕР АСААХ ХЭСЭГ ---
 
 if __name__ == "__main__":
+    # Railway-ийн портыг авах
     port = int(os.getenv("PORT", 8000))
-    print(f" Shoplift Detector Систем {port} порт дээр ажиллаж эхэллээ...")
     
-    print(" Shoplift Detector Систем ажиллаж эхэллээ...")
-    print("---")
+    print(f"--- Shoplift Detector Систем Port:{port} дээр ажиллаж эхэллээ ---")
 
-    # Background Thread-үүд асаах
+    # Background Thread-үүдийг uvicorn-оос ӨМНӨ асаах ёстой
     threading.Thread(target=video_capture, daemon=True).start()
-    print(" Камерын үйлчилгээ асалаа")
-
     threading.Thread(target=alert_worker, daemon=True).start()
-    print(" Alert үйлчилгээ асалаа")
-
     threading.Thread(target=ai_inference, daemon=True).start()
-    print(" AI үйлчилгээ асалаа")
 
-    print("---")
-    print(" API Server идэвхтэй: http://0.0.0.0:8000")
-    print(" Видео дамжуулалт: http://0.0.0.0:8000/video_feed")
-    print("---")
+    print(" Камер, Alert, AI үйлчилгээнүүд асаалаа.")
     
+    # Хамгийн сүүлд uvicorn-оо асаана
     uvicorn.run(app, host="0.0.0.0", port=port, log_level="info")
