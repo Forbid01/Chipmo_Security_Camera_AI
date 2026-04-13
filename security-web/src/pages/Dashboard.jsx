@@ -10,6 +10,7 @@ import { WeeklyChart } from '../components/Analytics/WeeklyChart';
 import { HourlyChart } from '../components/Analytics/HourlyChart';
 import { AlertCard } from '../components/Logs/AlertCard';
 import { VideoModal } from '../components/Monitoring/VideoModal';
+import { API_BASE_URL } from '../services/api';
 
 function Dashboard() {
   // --- STATE & DATA ---
@@ -18,9 +19,8 @@ function Dashboard() {
   const [selectedDay, setSelectedDay] = useState(null);
   const [selectedHour, setSelectedHour] = useState(null);
   const [activeCamera, setActiveCamera] = useState('mac'); 
+  const VIDEO_FEED_URL = `${API_BASE_URL}/video_feed/${activeCamera}`;
 
-  // --- API URL ---
-  const VIDEO_FEED_URL = `http://localhost:8000/video_feed/${activeCamera}`;
 
   // --- LOGIC: HOURLY CHART DATA ---
   const hourlyChartData = useMemo(() => {

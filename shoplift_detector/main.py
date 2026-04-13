@@ -8,6 +8,9 @@ current_dir = os.path.dirname(os.path.abspath(__file__))
 if current_dir not in sys.path:
     sys.path.insert(0, current_dir)
 
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+
 # Үндсэн FastAPI app-г api.py-аас импортлох
 from app.api.api import app
 
@@ -27,7 +30,26 @@ app.include_router(camera_router)
 
 # Тэмдэглэл: CORS api.py-д аль хэдийн тохируулагдсан тул давхардуулахгүй
 
+dist_path = os.path.join(current_dir, "dist")
+
+if os.path.exists(dist_path):
+    # CSS, JS файлуудыг /assets замаар уншина
+    app.mount("/assets", StaticFiles(directory=os.path.join(dist_path, "assets")), name="assets")
+
+    # Вэб рүү ороход (/) шууд index.html-ийг өгнө
+    @app.get("/{catchall:path}")
+    async def serve_react_app(catchall: str):
+        # Хэрэв API биш бол React-ийн index.html-ийг буцаана (Single Page App routing)
+        if catchall.startswith("api") or catchall in ["video_feed", "forgot-password", "verify-code", "reset-password"]:
+             return None # API-ууд хэвийн ажиллана
+        return FileResponse(os.path.join(dist_path, "index.html"))
+else:
+    print(" АНХААР: 'dist' хавтас олдсонгүй. Frontend ажиллахгүй байж магадгүй!")
+
 if __name__ == "__main__":
+    port = int(os.getenv("PORT", 8000))
+    print(f" Shoplift Detector Систем {port} порт дээр ажиллаж эхэллээ...")
+    
     print(" Shoplift Detector Систем ажиллаж эхэллээ...")
     print("---")
 
@@ -45,5 +67,5 @@ if __name__ == "__main__":
     print(" API Server идэвхтэй: http://0.0.0.0:8000")
     print(" Видео дамжуулалт: http://0.0.0.0:8000/video_feed")
     print("---")
-
-    uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info")
+    
+    uvicorn.run(app, host="0.0.0.0", port=port, log_level="info")

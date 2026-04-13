@@ -12,12 +12,13 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /app
 
-# Төслийн файлуудыг хуулах
 COPY . .
 
-# Python сангуудыг суулгах
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt
 
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt && \
+    pip install --no-cache-dir PyJWT python-jose[cryptography]
 # Асах команд
 CMD ["python", "shoplift_detector/main.py"]

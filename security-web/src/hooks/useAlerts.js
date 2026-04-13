@@ -35,7 +35,7 @@ export const useAlerts = (refreshInterval = 3000) => {
 
       if (dateStr) {
         const formattedStr =
-          typeof dateStr === "string" ? dateStr.replace(" ", "T") : dateStr;
+          typeof dateStr === "string" ? dateStr.replace(/\s+/g, "T") : dateStr;
         const date = new Date(formattedStr);
 
         if (!isNaN(date.getTime())) {

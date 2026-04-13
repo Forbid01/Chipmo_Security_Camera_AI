@@ -1,6 +1,7 @@
 import axios from "axios";
 
-export const API_BASE_URL = "http://192.168.0.246:8000";
+export const API_BASE_URL =
+  "https://chipmosecuritycameraai-production.up.railway.app";
 export const VIDEO_FEED_URL = `${API_BASE_URL}/video_feed`;
 
 // 1. Axios instance үүсгэх
