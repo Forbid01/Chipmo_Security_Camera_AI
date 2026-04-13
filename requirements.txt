@@ -12,3 +12,4 @@ onnxruntime
 python-dotenv
 PyJWT
 passlib[bcrypt]
+python-jose[cryptography]
