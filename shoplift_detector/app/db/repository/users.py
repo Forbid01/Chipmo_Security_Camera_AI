@@ -23,6 +23,7 @@ class UserRepository(BaseDB):
             );
             """,
             # 2. Хэрэглэгчид (Users)
+            # ON DELETE SET NULL: Байгууллага устахад хэрэглэгч устахгүй, харин org_id нь хоосон болно.
             """
             CREATE TABLE IF NOT EXISTS users (
                 id SERIAL PRIMARY KEY,
@@ -31,8 +32,8 @@ class UserRepository(BaseDB):
                 phone_number VARCHAR(20) UNIQUE,
                 hashed_password TEXT NOT NULL,
                 full_name VARCHAR(100),
-                role VARCHAR(20) DEFAULT 'user', -- 'super_admin' эсвэл 'user'
-                organization_id INTEGER REFERENCES organizations(id),
+                role VARCHAR(20) DEFAULT 'user',
+                organization_id INTEGER REFERENCES organizations(id) ON DELETE SET NULL,
                 recovery_code VARCHAR(10),
                 recovery_code_expires TIMESTAMP,
                 is_active BOOLEAN DEFAULT TRUE,
@@ -40,13 +41,14 @@ class UserRepository(BaseDB):
             );
             """,
             # 3. Камерууд (Cameras)
+            # ON DELETE CASCADE: Байгууллага устахад холбоотой бүх камер автоматаар устгагдана.
             """
             CREATE TABLE IF NOT EXISTS cameras (
                 id SERIAL PRIMARY KEY,
                 name VARCHAR(100),
                 url TEXT NOT NULL,
-                type VARCHAR(20), -- 'mac', 'phone', 'axis' гэх мэт
-                organization_id INTEGER REFERENCES organizations(id),
+                type VARCHAR(20),
+                organization_id INTEGER REFERENCES organizations(id) ON DELETE CASCADE,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
             """
@@ -60,10 +62,9 @@ class UserRepository(BaseDB):
         except Exception as e:
             logger.error(f"Table Creation Error: {e}")
 
-    # --- Хэрэглэгчийн Үйлдлүүд ---
+    # --- ХЭРЭГЛЭГЧИЙН ҮЙЛДЛҮҮД ---
 
     def create(self, username, email, phone_number, hashed_password, full_name=None, organization_id=None, role='user') -> Optional[int]:
-        """Шинэ хэрэглэгч бүртгэх"""
         query = """
         INSERT INTO users (username, email, phone_number, hashed_password, full_name, organization_id, role)
         VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING id;
@@ -71,56 +72,28 @@ class UserRepository(BaseDB):
         params = (username, email, phone_number, hashed_password, full_name, organization_id, role)
         return self._execute_returning_id(query, params)
 
-    def get_by_id(self, user_id: int) -> Optional[Dict[str, Any]]:
-        query = "SELECT * FROM users WHERE id = %s"
-        return self._execute_fetch_one(query, (user_id,))
-
-    def get_by_email(self, email: str) -> Optional[Dict[str, Any]]:
-        query = "SELECT * FROM users WHERE email = %s"
-        return self._execute_fetch_one(query, (email,))
-
     def get_by_identifier(self, identifier: str) -> Optional[Dict[str, Any]]:
-        """Нэвтрэх нэр эсвэл Имэйлээр идэвхтэй хэрэглэгчийг хайх"""
         query = "SELECT * FROM users WHERE (username = %s OR email = %s) AND is_active = TRUE"
         return self._execute_fetch_one(query, (identifier, identifier))
 
-    def set_active_status(self, user_id: int, status: bool) -> bool:
-        query = "UPDATE users SET is_active = %s WHERE id = %s"
-        return self._execute_update(query, (status, user_id))
-
-    # --- Нууц үг Сэргээх болон Шинэчлэх ---
-
-    def update_recovery_data(self, user_id: int, code: str, expiry: datetime) -> bool:
-        """OTP код болон хүчинтэй хугацааг хадгалах"""
-        query = "UPDATE users SET recovery_code = %s, recovery_code_expires = %s WHERE id = %s"
-        return self._execute_update(query, (code, expiry, user_id))
-
-    def clear_recovery_data(self, user_id: int) -> bool:
-        """Ашиглаж дууссан OTP кодыг цэвэрлэх"""
-        query = "UPDATE users SET recovery_code = NULL, recovery_code_expires = NULL WHERE id = %s"
-        return self._execute_update(query, (user_id,))
-
-    def update_password(self, user_id: int, new_hashed_password: str) -> bool:
-        """Хэрэглэгчийн нууц үгийг шинэчлэх"""
-        query = "UPDATE users SET hashed_password = %s WHERE id = %s"
-        return self._execute_update(query, (new_hashed_password, user_id))
-
-    # --- Байгууллага (Admin) Үйлдлүүд ---
+    # --- БАЙГУУЛЛАГА (ADMIN) ҮЙЛДЛҮҮД ---
 
     def create_organization(self, name: str) -> Optional[int]:
-        """Шинэ байгууллага үүсгэх"""
         query = "INSERT INTO organizations (name) VALUES (%s) RETURNING id;"
         return self._execute_returning_id(query, (name,))
 
     def get_all_organizations(self) -> List[Dict[str, Any]]:
-        """Бүх байгууллагын жагсаалт авах"""
-        query = "SELECT id, name, created_at FROM organizations ORDER BY name ASC;"
+        query = "SELECT id, name, created_at FROM organizations ORDER BY created_at DESC;"
         return self._execute_fetch_all(query)
 
-    # --- Камерын Үйлдлүүд ---
+    def delete_organization(self, org_id: int) -> bool:
+        """Байгууллага устгах (Камерууд нь CASCADE-ээр хамт устгагдана)"""
+        query = "DELETE FROM organizations WHERE id = %s"
+        return self._execute_update(query, (org_id,))
+
+    # --- КАМЕРЫН ҮЙЛДЛҮҮД ---
 
     def add_camera(self, name, url, cam_type, org_id) -> Optional[int]:
-        """Байгууллагад камер холбох"""
         query = """
         INSERT INTO cameras (name, url, type, organization_id)
         VALUES (%s, %s, %s, %s) RETURNING id;
@@ -128,12 +101,35 @@ class UserRepository(BaseDB):
         params = (name, url, cam_type, org_id)
         return self._execute_returning_id(query, params)
 
-    def get_cameras_by_org(self, org_id: int) -> List[Dict[str, Any]]:
-        """Тухайн байгууллагын камеруудыг авах"""
-        query = "SELECT * FROM cameras WHERE organization_id = %s"
-        return self._execute_fetch_all(query, (org_id,))
+    def get_all_cameras(self) -> List[Dict[str, Any]]:
+        """Бүх камерыг байгууллагын нэртэй нь хамт авах (Admin Dashboard-д зориулсан)"""
+        query = """
+        SELECT c.*, o.name as organization_name 
+        FROM cameras c 
+        LEFT JOIN organizations o ON c.organization_id = o.id 
+        ORDER BY c.created_at DESC;
+        """
+        return self._execute_fetch_all(query)
 
-    # --- Өгөгдлийн сангийн Дотоод Үйлдлүүд (Execute Helpers) ---
+    def delete_camera(self, cam_id: int) -> bool:
+        query = "DELETE FROM cameras WHERE id = %s"
+        return self._execute_update(query, (cam_id,))
+
+    # --- НУУЦ ҮГ СЭРГЭЭХ ---
+
+    def update_recovery_data(self, user_id: int, code: str, expiry: datetime) -> bool:
+        query = "UPDATE users SET recovery_code = %s, recovery_code_expires = %s WHERE id = %s"
+        return self._execute_update(query, (code, expiry, user_id))
+
+    def clear_recovery_data(self, user_id: int) -> bool:
+        query = "UPDATE users SET recovery_code = NULL, recovery_code_expires = NULL WHERE id = %s"
+        return self._execute_update(query, (user_id,))
+
+    def update_password(self, user_id: int, new_hashed_password: str) -> bool:
+        query = "UPDATE users SET hashed_password = %s WHERE id = %s"
+        return self._execute_update(query, (new_hashed_password, user_id))
+
+    # --- ӨГӨГДЛИЙН САНГИЙН ТУСЛАХ ФУНКЦҮҮД (HELPERS) ---
 
     def _execute_returning_id(self, query, params) -> Optional[int]:
         try:

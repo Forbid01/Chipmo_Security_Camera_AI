@@ -45,8 +45,20 @@ export default function Login() {
 
       if (response.data.access_token) {
         localStorage.setItem('token', response.data.access_token);
+        
+        // 2. ХЭРЭГЛЭГЧИЙН МЭДЭЭЛЛИЙГ (ROLE-ТОЙ НЬ) ХАДГАЛАХ
+        // FastAPI чинь токентой хамт хэрэглэгчийн мэдээллийг буцаадаг байх ёстой
+        if (response.data.user) {
+          localStorage.setItem('user', JSON.stringify(response.data.user));
+        }
+
         setTimeout(() => {
-          navigate('/dashboard');
+          // 3. Хэрэв super_admin бол админ хуудас руу, үгүй бол dashboard руу
+          if (response.data.user?.role === 'super_admin') {
+            navigate('/admin/control');
+          } else {
+            navigate('/dashboard');
+          }
           window.location.reload(); 
         }, 100);
       }

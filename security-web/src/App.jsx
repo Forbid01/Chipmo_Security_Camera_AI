@@ -4,11 +4,16 @@ import Landing from './pages/Landing';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
+import DashboardAdmin from './pages/DashboardAdmin'; // 1. Шинэ хуудсаа импортлох
 import ForgotPassword from './pages/ForgetPassword';
 
 function App() {
-  // Токен байгаа эсэхийг шалгах
-  const isAuthenticated = !!localStorage.getItem('token');
+  const token = localStorage.getItem('token');
+  const isAuthenticated = !!token;
+  
+  // 2. Хэрэглэгчийн эрхийг шалгах (localStorage-д user мэдээлэл хадгалсан гэж үзэв)
+  const user = JSON.parse(localStorage.getItem('user') || '{}');
+  const isSuperAdmin = user.role === 'super_admin';
 
   return (
     <Router>
@@ -25,18 +30,27 @@ function App() {
           element={isAuthenticated ? <Navigate to="/dashboard" /> : <Register />} 
         />
 
-        {/* 2. НУУЦ ҮГ СЭРГЭЭХ ЗАМЫГ ЭНД НЭМЭВ */}
         <Route 
           path="/forgot-password" 
           element={isAuthenticated ? <Navigate to="/dashboard" /> : <ForgotPassword />} 
         />
 
+        {/* Энгийн хэрэглэгчийн Dashboard */}
         <Route 
           path="/dashboard" 
           element={isAuthenticated ? <Dashboard /> : <Navigate to="/login" />} 
         />
 
-        {/* Бүртгэлгүй хаяг орвол Landing руу буцна */}
+        {/* 3. SUPER ADMIN CONTROL PANEL (Хамгаалалттай) */}
+        <Route 
+          path="/admin/control" 
+          element={
+            isAuthenticated && isSuperAdmin 
+              ? <DashboardAdmin /> 
+              : <Navigate to="/dashboard" /> 
+          } 
+        />
+
         <Route path="*" element={<Navigate to="/" />} />
       </Routes>
     </Router>

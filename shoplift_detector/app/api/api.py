@@ -8,19 +8,26 @@ from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm
 
+# Тохиргоо болон State-үүд
 from app.core.config import ALERTS_DIR
 import app.core.state as state
 from app.db.repository.alerts import AlertRepository
-from app.core.security import get_current_user, create_access_token, verify_password, get_password_hash
+
+# Аюулгүй байдал болон Router-үүд
+# ТАЙЛБАР: Замууд нь чиний хавтасны бүтцээс хамаарч өөр байж магадгүй, шалгаарай!
+from app.api.auth import router as auth_router
+from app.services.auth_service import AuthService
 
 from pydantic import EmailStr, BaseModel
 from app.services.email_service import send_contact_email
 
-app = FastAPI(title="Shoplift Detector API")
+app = FastAPI(title="Chipmo Security AI Portal")
 alert_repo = AlertRepository()
 
+# Статик файлуудыг холбох (Зураг, Видео)
 app.mount("/static", StaticFiles(directory=ALERTS_DIR), name="static")
 
+# CORS Тохиргоо (React-оос хандах боломжийг нээнэ)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -29,7 +36,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# safe_update_display_queue функц БАЙХГҮЙ — state.py-аас ашиглана
+# --- AUTH ROUTER ИНТЕГРАЦИ ---
+# Энэ мөр нь /auth/register, /auth/login, /auth/admin/... бүх замыг идэвхжүүлнэ
+app.include_router(auth_router)
+
+# --- VIDEO STREAMING LOGIC ---
 
 async def generate_frames():
     while True:
@@ -66,24 +77,54 @@ async def generate_frames():
             print(f"Streaming Error: {e}")
             await asyncio.sleep(0.1)
 
+# --- AUTH ENDPOINTS (REACT LOGIN-Д ЗОРИУЛСАН) ---
 
 @app.post("/token")
 async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends()):
-    access_token = create_access_token(data={"sub": form_data.username})
-    return {"access_token": access_token, "token_type": "bearer"}
-
+    """
+    React Login.jsx-ээс ирэх хүсэлтийг хүлээн авч, 
+    AuthService-ээр баталгаажуулан JWT токен болон User Role-ийг буцаана.
+    """
+    user = AuthService.authenticate_user(form_data.username, form_data.password)
+    
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Нэвтрэх нэр эсвэл нууц үг буруу байна",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    # Payload-д хэрэглэгчийн мэдээллийг нууцлан хийнэ
+    access_token = AuthService.create_access_token(
+        data={
+            "sub": user["username"],
+            "role": user.get("role", "user"),
+            "org_id": user.get("organization_id")
+        }
+    )
+    
+    return {
+        "access_token": access_token, 
+        "token_type": "bearer",
+        "user": {
+            "username": user["username"],
+            "role": user.get("role", "user"),
+            "org_id": user.get("organization_id")
+        }
+    }
 
 @app.get("/users/me")
-async def read_users_me(current_user: str = Depends(get_current_user)):
-    return {"username": current_user, "role": "admin"}
+async def read_users_me(current_user: dict = Depends(AuthService.get_current_user)):
+    """Одоо нэвтэрсэн байгаа хэрэглэгчийн мэдээллийг буцаана"""
+    return current_user
 
+# --- CONTACT FORM ---
 
 class ContactForm(BaseModel):
     name: str
     email: EmailStr
     subject: str
     message: str
-
 
 @app.post("/api/contact")
 async def contact_us(form: ContactForm):
@@ -98,6 +139,7 @@ async def contact_us(form: ContactForm):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+# --- VIDEO & ALERTS ---
 
 @app.get("/video_feed")
 async def video_feed():
@@ -106,10 +148,11 @@ async def video_feed():
         media_type="multipart/x-mixed-replace; boundary=frame"
     )
 
-
 @app.get("/alerts")
-async def get_alerts(request: Request, user: str = Depends(get_current_user)):
+async def get_alerts(request: Request, user: dict = Depends(AuthService.get_current_user)):
     try:
+        # Хэрэв энгийн хэрэглэгч бол зөвхөн өөрийн байгууллагын алдааг харна гэх мэт 
+        # логик энд нэмж болно (user['org_id'] ашиглаад)
         alerts = alert_repo.get_latest_alerts(limit=20)
         base_url = str(request.base_url).rstrip("/")
 

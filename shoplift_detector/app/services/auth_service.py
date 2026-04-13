@@ -1,16 +1,15 @@
 import random
 import string
 import logging
-import jwt # Токен задлахад хэрэгтэй
+import jwt 
 from datetime import datetime, timedelta
 from fastapi import HTTPException, status, Depends
 
-# Core болон Security-ээс хэрэгтэй функцүүдээ импортлох
 from ..core.security import (
     verify_password, 
     get_password_hash, 
     create_access_token, 
-    oauth2_scheme, # Token-г Header-ээс салгаж авах dependency
+    oauth2_scheme, 
     SECRET_KEY, 
     ALGORITHM
 )
@@ -25,7 +24,7 @@ class AuthService:
     # --- БҮРТГЭЛ БОЛОН НЭВТРЭЛТ ---
 
     @classmethod
-    async def register_user(cls, username, email, password, phone_number=None, full_name=None):
+    async def register_user(cls, username, email, password, phone_number=None, full_name=None, role="user"):
         """Шинэ хэрэглэгч бүртгэх"""
         if user_repo.get_by_identifier(username) or user_repo.get_by_email(email):
             raise HTTPException(
@@ -33,12 +32,14 @@ class AuthService:
                 detail="Хэрэглэгчийн нэр эсвэл имэйл бүртгэлтэй байна."
             )
         hashed_pwd = get_password_hash(password)
+        # Repository-ийн create функц чинь 'role' хүлээж авдаг байх шаардлагатай
         user_id = user_repo.create(
             username=username, 
             email=email, 
             phone_number=phone_number, 
             hashed_password=hashed_pwd, 
-            full_name=full_name
+            full_name=full_name,
+            role=role
         )
         return user_id
 
@@ -57,10 +58,7 @@ class AuthService:
 
     @staticmethod
     def get_current_user(token: str = Depends(oauth2_scheme)):
-        """
-        Токен уншиж хэрэглэгчийн мэдээллийг (role, org_id) буцаах. 
-        Энэ функцийг Router дээр Depends болгож ашиглана.
-        """
+        """Токен уншиж хэрэглэгчийн мэдээллийг (role, org_id) буцаах"""
         try:
             payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
             username: str = payload.get("sub")
@@ -81,14 +79,44 @@ class AuthService:
                 detail="Токен хүчингүй эсвэл хугацаа дууссан байна"
             )
 
-    # --- НУУЦ ҮГ СЭРГЭЭХ ЛОГИК ---
+    # --- АДМИН БОЛОН БАЙГУУЛЛАГЫН ҮЙЛДЛҮҮД (CRUD) ---
+
+    @staticmethod
+    def create_organization(name: str):
+        """Шинэ байгууллага үүсгэх"""
+        return user_repo.create_organization(name)
+
+    @staticmethod
+    def get_all_organizations():
+        """Бүх байгууллагын жагсаалтыг авах (DashboardAdmin-д хэрэгтэй)"""
+        return user_repo.get_all_organizations()
+
+    @staticmethod
+    def delete_organization(org_id: int):
+        """Байгууллага устгах"""
+        return user_repo.delete_organization(org_id)
+
+    @staticmethod
+    def add_camera(name, url, cam_type, org_id):
+        """Шинэ камер бүртгэх"""
+        return user_repo.add_camera(name, url, cam_type, org_id)
+
+    @staticmethod
+    def get_all_cameras():
+        """Бүх камерын жагсаалтыг авах (DashboardAdmin-д хэрэгтэй)"""
+        return user_repo.get_all_cameras()
+
+    @staticmethod
+    def delete_camera(cam_id: int):
+        """Камер устгах"""
+        return user_repo.delete_camera(cam_id)
+
+    # --- НУУЦ ҮГ СЭРГЭЭХ ЛОГИК (OTP) ---
 
     @classmethod
     async def generate_recovery_code(cls, email: str):
-        """1. OTP үүсгэж, DB-д хадгалаад имэйл илгээх"""
         user = user_repo.get_by_email(email)
         if not user:
-            logger.warning(f"Password recovery attempt for non-existent email: {email}")
             return False
 
         otp_code = ''.join(random.choices(string.digits, k=6))
@@ -100,46 +128,25 @@ class AuthService:
 
     @classmethod
     def verify_recovery_code(cls, email: str, code: str):
-        """2. Хэрэглэгчийн кодыг DB-тэй тулгах"""
         user = user_repo.get_by_email(email)
-        if not user:
-            return False
+        if not user: return False
 
         db_code = user.get('recovery_code')
         db_expiry = user.get('recovery_code_expires')
 
-        if (db_code == code and 
-            db_expiry and 
-            db_expiry > datetime.utcnow()):
+        if (db_code == code and db_expiry and db_expiry > datetime.utcnow()):
             return True
-        
         return False
 
     @classmethod
     def reset_password(cls, email: str, code: str, new_password: str):
-        """3. Код зөв бол нууц үгийг шинэчлэх"""
         if not cls.verify_recovery_code(email, code):
             return False
 
         user = user_repo.get_by_email(email)
-        if not user:
-            return False
+        if not user: return False
 
         hashed_pwd = get_password_hash(new_password)
         user_repo.update_password(user['id'], hashed_pwd)
         user_repo.clear_recovery_data(user['id'])
         return True
-
-    # --- АДМИН БОЛОН БАЙГУУЛЛАГЫН ҮЙЛДЛҮҮД ---
-
-    @staticmethod
-    def create_organization(name: str):
-        return user_repo.create_organization(name)
-
-    @staticmethod
-    def add_camera(name, url, cam_type, org_id):
-        return user_repo.add_camera(name, url, cam_type, org_id)
-
-    @staticmethod
-    def get_organizations():
-        return user_repo.get_all_organizations()

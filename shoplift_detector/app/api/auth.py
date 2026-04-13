@@ -2,8 +2,9 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from ..services.auth_service import AuthService
 from pydantic import BaseModel, EmailStr
+from typing import List
 
-# Prefix-ийг хоосон орхиж болох ч ихэвчлэн /auth гэвэл илүү цэгцтэй
+# Router тохиргоо
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 # --- МОДЕЛУУД (Pydantic Models) ---
@@ -121,32 +122,58 @@ async def reset_password(request: ResetPasswordRequest):
 
 # --- АДМИН ҮЙЛДЛҮҮД (Role-based Access) ---
 
+# 1. Байгууллага удирдах (GET, POST, DELETE)
+
+@router.get("/admin/organizations")
+async def get_organizations(current_user: dict = Depends(AuthService.get_current_user)):
+    """Бүх байгууллагын жагсаалтыг харах"""
+    if current_user.get("role") != "super_admin":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Эрх хүрэлцэхгүй")
+    return await AuthService.get_all_organizations()
+
 @router.post("/admin/organizations")
 async def create_org(
     org_data: OrganizationCreate, 
     current_user: dict = Depends(AuthService.get_current_user)
 ):
-    """Зөвхөн Super Admin байгууллага үүсгэнэ"""
+    """Шинэ байгууллага үүсгэх"""
     if current_user.get("role") != "super_admin":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, 
-            detail="Танд байгууллага нэмэх эрх байхгүй!"
-        )
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Танд байгууллага нэмэх эрх байхгүй!")
     
     org_id = AuthService.create_organization(org_data.name)
     return {"message": "Байгууллага нэмэгдлээ", "org_id": org_id}
+
+@router.delete("/admin/organizations/{org_id}")
+async def delete_organization(
+    org_id: int, 
+    current_user: dict = Depends(AuthService.get_current_user)
+):
+    """Байгууллага устгах"""
+    if current_user.get("role") != "super_admin":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Эрх хүрэлцэхгүй")
+    
+    success = await AuthService.delete_organization(org_id)
+    if not success:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Байгууллага олдсонгүй")
+    return {"message": "Байгууллага амжилттай устгагдлаа"}
+
+# 2. Камер удирдах (GET, POST, DELETE)
+
+@router.get("/admin/cameras")
+async def get_cameras(current_user: dict = Depends(AuthService.get_current_user)):
+    """Бүх камерын жагсаалтыг харах"""
+    if current_user.get("role") != "super_admin":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Эрх хүрэлцэхгүй")
+    return await AuthService.get_all_cameras()
 
 @router.post("/admin/cameras")
 async def add_camera_to_org(
     cam_data: CameraCreate, 
     current_user: dict = Depends(AuthService.get_current_user)
 ):
-    """Зөвхөн Super Admin камер холбоно"""
+    """Байгууллагад камер холбох"""
     if current_user.get("role") != "super_admin":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, 
-            detail="Танд камер нэмэх эрх байхгүй!"
-        )
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Танд камер нэмэх эрх байхгүй!")
     
     cam_id = AuthService.add_camera(
         name=cam_data.name,
@@ -155,3 +182,17 @@ async def add_camera_to_org(
         org_id=cam_data.organization_id
     )
     return {"message": "Камер амжилттай холбогдлоо", "cam_id": cam_id}
+
+@router.delete("/admin/cameras/{cam_id}")
+async def delete_camera(
+    cam_id: int, 
+    current_user: dict = Depends(AuthService.get_current_user)
+):
+    """Камер устгах"""
+    if current_user.get("role") != "super_admin":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Эрх хүрэлцэхгүй")
+    
+    success = await AuthService.delete_camera(cam_id)
+    if not success:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Камер олдсонгүй")
+    return {"message": "Камер амжилттай устгагдлаа"}
