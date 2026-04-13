@@ -88,7 +88,7 @@ class ShopliftDetector:
                 self._optimize_video(video_path)
 
             self.alert_db.insert_alert(
-                person_id=int(yolo_id), image_path=img_path, reason=reason
+                person_id=int(yolo_id), image_path=img_path, reason=reason, organization_id=None
             )
             alert_queue.put({
                 "id": yolo_id,

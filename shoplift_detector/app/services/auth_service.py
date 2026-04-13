@@ -2,7 +2,7 @@ import random
 import string
 import logging
 import jwt 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from fastapi import HTTPException, status, Depends
 
 from ..core.security import (
@@ -122,7 +122,7 @@ class AuthService:
             return False
 
         otp_code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=8))
-        expiry = datetime.utcnow() + timedelta(minutes=15)
+        expiry = datetime.now(timezone.utc) + timedelta(minutes=15)
 
         user_repo.update_recovery_data(user['id'], otp_code, expiry)
         success = await send_otp_email(email, otp_code)
@@ -136,7 +136,7 @@ class AuthService:
         db_code = user.get('recovery_code')
         db_expiry = user.get('recovery_code_expires')
 
-        if (db_code == code and db_expiry and db_expiry > datetime.utcnow()):
+        if (db_code == code and db_expiry and db_expiry > datetime.now(timezone.utc)):
             return True
         return False
 

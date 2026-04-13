@@ -40,7 +40,7 @@ class AlertRepository(BaseDB):
             finally:
                 self._return_connection(conn)
 
-    def insert_alert(self, person_id: int, image_path: str, reason: str):
+    def insert_alert(self, person_id: int, image_path: str, reason: str, organization_id: int = None):
         conn = self._get_connection()
         if not conn:
             return
@@ -61,12 +61,12 @@ class AlertRepository(BaseDB):
                         return
 
                 insert_query = """
-                INSERT INTO alerts (person_id, image_path, description)
-                VALUES (%s, %s, %s)
+                INSERT INTO alerts (person_id, image_path, description, organization_id)
+                VALUES (%s, %s, %s, %s)
                 """
-                cur.execute(insert_query, (person_id, image_path, reason))
+                cur.execute(insert_query, (person_id, image_path, reason, organization_id))
                 conn.commit()
-                logger.info(f"DB Saved: Person ID {person_id} - {reason}")
+                logger.info(f"DB Saved: Person ID {person_id} for Org {organization_id}")
 
         except Exception as e:
             logger.error(f"DB Insert Error: {e}")

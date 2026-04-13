@@ -243,9 +243,10 @@ async def video_feed_by_camera(camera_id: str):
 async def get_alerts(request: Request, user: dict = Depends(AuthService.get_current_user)):
     try:
         org_id = user.get("org_id")
-        if not org_id and user.get("role") != "super_admin":
-            raise HTTPException(status_code=403, detail="Байгууллага тодорхойгүй байна.")
-        alerts = alert_repo.get_latest_alerts(organization_id=org_id, limit=20)
+        if user.get("role") == "super_admin":
+            alerts = alert_repo.get_latest_alerts(organization_id=None, limit=20)
+        else:
+            alerts = alert_repo.get_latest_alerts(organization_id=org_id, limit=20)
         base_url = str(request.base_url).rstrip("/")
 
         for alert in alerts:
@@ -265,8 +266,6 @@ async def get_alerts(request: Request, user: dict = Depends(AuthService.get_curr
                 alert['video_url'] = None
 
         return {"status": "success", "data": alerts}
-    except HTTPException:
-        raise
     except Exception as e:
         logger.error(f"Alerts endpoint error: {e}")
         raise HTTPException(status_code=500, detail="Alert мэдээлэл уншихад алдаа гарлаа.")
