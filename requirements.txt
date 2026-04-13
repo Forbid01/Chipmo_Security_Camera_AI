@@ -17,3 +17,4 @@ PyJWT==2.8.0
 python-jose[cryptography]
 email-validator
 slowapi
+pip freeze > requirements.txt
