@@ -5,8 +5,16 @@ import {
   Building2, Video, Plus, Trash2, Edit3, 
   CheckCircle2, Save, AlertCircle, Loader2
 } from 'lucide-react';
-import axios from 'axios';
-import { API_BASE_URL } from '../services/api';
+
+// Шинэ api үйлчилгээнүүдийг импортлох
+import { 
+  getOrganizations, 
+  createOrganization, 
+  deleteOrganization, 
+  getCameras, 
+  addCamera, 
+  deleteCamera 
+} from '../services/api';
 
 const DashboardAdmin = () => {
   const [activeTab, setActiveTab] = useState('organizations'); 
@@ -15,41 +23,37 @@ const DashboardAdmin = () => {
   const [loading, setLoading] = useState(false);
 
   // Form states
-  const [newOrg, setNewOrg] = useState({ name: '', address: '', contact_info: '' });
+  const [newOrg, setNewOrg] = useState({ name: '', address: '' });
   const [newCam, setNewCam] = useState({ name: '', url: '', type: 'axis', organization_id: '' });
 
-  const token = localStorage.getItem('token');
-
-  // --- 1. FUNCTIONS FIRST (To avoid "Accessed before declaration" error) ---
+  // --- 1. МЭДЭЭЛЭЛ ТАТАХ ФУНКЦ ---
 
   const fetchData = useCallback(async () => {
-    if (!token) return;
     setLoading(true);
     try {
-      const headers = { Authorization: `Bearer ${token}` };
-      
-      // Байгууллагуудыг үргэлж татна (Камер нэмэхэд хэрэгтэй тул)
-      const orgRes = await axios.get(`${API_BASE_URL}/auth/admin/organizations`, { headers });
-      setOrgs(orgRes.data);
+      // Байгууллагуудыг үргэлж татна (Камер онооход хэрэгтэй)
+      const orgsData = await getOrganizations();
+      setOrgs(orgsData);
 
       if (activeTab === 'cameras') {
-        const camRes = await axios.get(`${API_BASE_URL}/auth/admin/cameras`, { headers });
-        setCameras(camRes.data);
+        const camsData = await getCameras();
+        setCameras(camsData);
       }
     } catch (err) {
       console.error("Мэдээлэл татахад алдаа гарлаа:", err);
     } finally {
       setLoading(false);
     }
-  }, [activeTab, token]);
+  }, [activeTab]);
+
+  // --- 2. БАЙГУУЛЛАГА НЭМЭХ ---
 
   const handleAddOrg = async (e) => {
     e.preventDefault();
     try {
-      await axios.post(`${API_BASE_URL}/auth/admin/organizations`, newOrg, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      setNewOrg({ name: '', address: '', contact_info: '' });
+      // api.js-ийн createOrganization-ийг ашиглах
+      await createOrganization(newOrg.name); 
+      setNewOrg({ name: '', address: '' });
       fetchData();
     } catch (err) {
       console.error(err);
@@ -57,12 +61,17 @@ const DashboardAdmin = () => {
     }
   };
 
+  // --- 3. КАМЕР НЭМЭХ ---
+
   const handleAddCamera = async (e) => {
     e.preventDefault();
     try {
-      await axios.post(`${API_BASE_URL}/auth/admin/cameras`, newCam, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      // organization_id-г тоо руу хөрвүүлж илгээх
+      const payload = {
+        ...newCam,
+        organization_id: parseInt(newCam.organization_id)
+      };
+      await addCamera(payload);
       setNewCam({ name: '', url: '', type: 'axis', organization_id: '' });
       fetchData();
     } catch (err) {
@@ -71,12 +80,16 @@ const DashboardAdmin = () => {
     }
   };
 
+  // --- 4. УСТГАХ ҮЙЛДЭЛ ---
+
   const handleDelete = async (type, id) => {
     if (!window.confirm("Та устгахдаа итгэлтэй байна уу?")) return;
     try {
-      await axios.delete(`${API_BASE_URL}/auth/admin/${type}/${id}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      if (type === 'organizations') {
+        await deleteOrganization(id);
+      } else {
+        await deleteCamera(id);
+      }
       fetchData();
     } catch (err) {
       console.error(err);
@@ -84,21 +97,15 @@ const DashboardAdmin = () => {
     }
   };
 
-  // --- 2. USEEFFECT CALLS ---
-
   useEffect(() => {
     fetchData();
   }, [fetchData]);
 
-  // --- 3. RENDER ---
-
   return (
     <div className="min-h-screen bg-[#05080d] text-slate-200 p-8 font-sans relative overflow-hidden">
-      {/* Background Decor */}
       <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-red-600/5 blur-[120px] rounded-full pointer-events-none" />
       
       <div className="max-w-6xl mx-auto relative z-10">
-        {/* Header Section */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-10 gap-6">
           <div>
             <h1 className="text-4xl font-black italic tracking-tighter text-white uppercase flex items-center gap-3">
@@ -125,7 +132,6 @@ const DashboardAdmin = () => {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-          {/* Left Panel: Creation Form */}
           <div className="lg:col-span-4">
             <motion.div 
               layout
@@ -151,15 +157,6 @@ const DashboardAdmin = () => {
                         required
                       />
                     </div>
-                    <div className="space-y-1">
-                      <label className="text-[10px] uppercase font-bold text-slate-500 ml-2">Location</label>
-                      <input 
-                        className="w-full bg-black/40 border border-slate-800 rounded-xl px-4 py-3 text-sm focus:border-red-500/50 outline-none transition-all text-white" 
-                        placeholder="Ulaanbaatar, MN"
-                        value={newOrg.address}
-                        onChange={(e) => setNewOrg({...newOrg, address: e.target.value})}
-                      />
-                    </div>
                   </>
                 ) : (
                   <>
@@ -174,7 +171,7 @@ const DashboardAdmin = () => {
                       />
                     </div>
                     <div className="space-y-1">
-                      <label className="text-[10px] uppercase font-bold text-slate-500 ml-2">RTSP URL</label>
+                      <label className="text-[10px] uppercase font-bold text-slate-500 ml-2">Source URL (RTSP/IP)</label>
                       <input 
                         className="w-full bg-black/40 border border-slate-800 rounded-xl px-4 py-3 text-sm focus:border-red-500/50 outline-none transition-all text-white font-mono" 
                         placeholder="rtsp://admin:pass@ip..."
@@ -204,7 +201,6 @@ const DashboardAdmin = () => {
             </motion.div>
           </div>
 
-          {/* Right Panel: Data Table */}
           <div className="lg:col-span-8">
             <div className="bg-[#0f172a]/40 backdrop-blur-xl rounded-[2.5rem] border border-slate-800/50 overflow-hidden shadow-2xl ring-1 ring-white/5">
               <div className="overflow-x-auto">
@@ -231,7 +227,7 @@ const DashboardAdmin = () => {
                               <div className="p-3 bg-blue-500/10 rounded-2xl text-blue-400 border border-blue-500/20 group-hover:scale-110 transition-transform"><Building2 size={20}/></div>
                               <div>
                                 <p className="text-sm font-black text-white">{org.name}</p>
-                                <p className="text-[10px] text-slate-500 font-mono mt-0.5 uppercase tracking-tighter">{org.address || 'Global Access'}</p>
+                                <p className="text-[10px] text-slate-500 font-mono mt-0.5 uppercase tracking-tighter">Registered Node</p>
                               </div>
                             </div>
                           </td>
