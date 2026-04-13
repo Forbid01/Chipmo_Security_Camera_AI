@@ -3,9 +3,10 @@ from fastapi.security import OAuth2PasswordRequestForm
 from ..services.auth_service import AuthService
 from pydantic import BaseModel, EmailStr
 
-router = APIRouter(prefix="", tags=["Authentication"])
+# Prefix-ийг хоосон орхиж болох ч ихэвчлэн /auth гэвэл илүү цэгцтэй
+router = APIRouter(prefix="/auth", tags=["Authentication"])
 
-# --- МОДЕЛУУД ---
+# --- МОДЕЛУУД (Pydantic Models) ---
 
 class UserCreate(BaseModel):
     username: str
@@ -26,12 +27,20 @@ class ResetPasswordRequest(BaseModel):
     code: str
     new_password: str
 
+class OrganizationCreate(BaseModel):
+    name: str
+
+class CameraCreate(BaseModel):
+    name: str
+    url: str
+    type: str  # 'mac', 'phone', 'axis'
+    organization_id: int
+
 # --- API ENDPOINTS ---
 
 @router.post("/register")
 async def register(user_data: UserCreate):
-    # AuthService-ийн register_user функц async биш бол await-гүй дуудна
-    # Хэрэв AuthService дотор async def register_user бол await AuthService.register_user(...)
+    """Шинэ хэрэглэгч бүртгэх"""
     user_id = await AuthService.register_user(
         username=user_data.username, 
         email=user_data.email, 
@@ -43,13 +52,14 @@ async def register(user_data: UserCreate):
     if not user_id:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Хэрэглэгч бүртгэхэд алдаа гарлаа. (Мэдээллийн сантай холбогдож чадсангүй)"
+            detail="Бүртгэл амжилтгүй боллоо."
         )
         
     return {"message": "Хэрэглэгч амжилттай бүртгэгдлээ", "user_id": user_id}
 
 @router.post("/login")
 async def login(form_data: OAuth2PasswordRequestForm = Depends()):
+    """Нэвтрэх болон JWT Токен авах"""
     user = AuthService.authenticate_user(form_data.username, form_data.password)
     if not user:
         raise HTTPException(
@@ -58,33 +68,39 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends()):
             headers={"WWW-Authenticate": "Bearer"},
         )
     
-    access_token = AuthService.create_access_token(data={"sub": user["username"]})
+    # Payload-д хэрэглэгчийн эрх болон байгууллагыг багцална
+    access_token = AuthService.create_access_token(
+        data={
+            "sub": user["username"],
+            "org_id": user.get("organization_id"),
+            "role": user.get("role", "user")
+        }
+    )
+    
     return {
         "access_token": access_token, 
         "token_type": "bearer",
         "user": {
             "username": user["username"],
-            "full_name": user.get("full_name"),
-            "phone_number": user.get("phone_number")
+            "role": user.get("role", "user"),
+            "org_id": user.get("organization_id")
         }
     }
 
-# --- НУУЦ ҮГ СЭРГЭЭХ ХЭСЭГ (Эдгээрийг заавал нэмнэ) ---
+# --- НУУЦ ҮГ СЭРГЭЭХ ---
 
 @router.post("/forgot-password")
 async def forgot_password(request: ForgotPasswordRequest):
-    # Имэйл рүү код илгээх
     success = await AuthService.generate_recovery_code(request.email)
     if not success:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Ийм имэйлтэй хэрэглэгч олдсонгүй эсвэл имэйл илгээхэд алдаа гарлаа."
+            detail="Хэрэглэгч олдсонгүй эсвэл имэйл илгээхэд алдаа гарлаа."
         )
     return {"message": "Сэргээх код имэйл рүү илгээгдлээ."}
 
 @router.post("/verify-code")
 async def verify_code(request: VerifyCodeRequest):
-    # Код шалгах
     is_valid = AuthService.verify_recovery_code(request.email, request.code)
     if not is_valid:
         raise HTTPException(
@@ -95,7 +111,6 @@ async def verify_code(request: VerifyCodeRequest):
 
 @router.post("/reset-password")
 async def reset_password(request: ResetPasswordRequest):
-    # Шинэ нууц үг хадгалах
     success = AuthService.reset_password(request.email, request.code, request.new_password)
     if not success:
         raise HTTPException(
@@ -103,3 +118,40 @@ async def reset_password(request: ResetPasswordRequest):
             detail="Нууц үг шинэчлэхэд алдаа гарлаа."
         )
     return {"message": "Нууц үг амжилттай шинэчлэгдлээ."}
+
+# --- АДМИН ҮЙЛДЛҮҮД (Role-based Access) ---
+
+@router.post("/admin/organizations")
+async def create_org(
+    org_data: OrganizationCreate, 
+    current_user: dict = Depends(AuthService.get_current_user)
+):
+    """Зөвхөн Super Admin байгууллага үүсгэнэ"""
+    if current_user.get("role") != "super_admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, 
+            detail="Танд байгууллага нэмэх эрх байхгүй!"
+        )
+    
+    org_id = AuthService.create_organization(org_data.name)
+    return {"message": "Байгууллага нэмэгдлээ", "org_id": org_id}
+
+@router.post("/admin/cameras")
+async def add_camera_to_org(
+    cam_data: CameraCreate, 
+    current_user: dict = Depends(AuthService.get_current_user)
+):
+    """Зөвхөн Super Admin камер холбоно"""
+    if current_user.get("role") != "super_admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, 
+            detail="Танд камер нэмэх эрх байхгүй!"
+        )
+    
+    cam_id = AuthService.add_camera(
+        name=cam_data.name,
+        url=cam_data.url,
+        cam_type=cam_data.type,
+        org_id=cam_data.organization_id
+    )
+    return {"message": "Камер амжилттай холбогдлоо", "cam_id": cam_id}

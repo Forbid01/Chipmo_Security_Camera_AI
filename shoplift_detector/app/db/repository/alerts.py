@@ -10,16 +10,16 @@ class AlertRepository(BaseDB):
         self._create_table()
 
     def _create_table(self):
-        """Alerts хүснэгт байхгүй бол үүсгэх"""
         query = """
         CREATE TABLE IF NOT EXISTS alerts (
             id SERIAL PRIMARY KEY,
             person_id INTEGER NOT NULL,
+            organization_id INTEGER REFERENCES organizations(id), -- Энийг нэмнэ
             event_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             image_path TEXT,
             description TEXT
         );
-        """
+        """ 
         conn = self._get_connection()
         if conn:
             try:
@@ -65,16 +65,19 @@ class AlertRepository(BaseDB):
         finally:
             conn.close()
 
-    def get_latest_alerts(self, limit: int = 20):
-        """Хамгийн сүүлийн үеийн мэдэгдлүүдийг жагсаалтаар авах"""
-        query = "SELECT * FROM alerts ORDER BY event_time DESC LIMIT %s"
+    def get_latest_alerts(self, organization_id: int, limit: int = 20):
+        # Зөвхөн тухайн байгууллагын alerts-ыг шүүж авна
+        query = """
+        SELECT * FROM alerts 
+        WHERE organization_id = %s 
+        ORDER BY event_time DESC LIMIT %s
+        """
         conn = self._get_connection()
-        if not conn:
-            return []
+        if not conn: return []
         
         try:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                cur.execute(query, (limit,))
+                cur.execute(query, (organization_id, limit))
                 rows = cur.fetchall()
                 
                 # Төгсгөлийн боловсруулалт: Датаг текст хэлбэрт шилжүүлэх
