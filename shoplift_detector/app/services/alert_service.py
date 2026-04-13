@@ -1,10 +1,20 @@
 import os
 import cv2
+import logging
 import requests
 import time
 import subprocess
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 from app.core.config import TELEGRAM_TOKEN, TELEGRAM_CHAT_ID
 from app.core.state import alert_queue
+
+logger = logging.getLogger(__name__)
+
+# Telegram API-д retry логик нэмэх
+_session = requests.Session()
+_retry = Retry(total=3, backoff_factor=1, status_forcelist=[500, 502, 503, 504])
+_session.mount("https://", HTTPAdapter(max_retries=_retry))
 
 def save_video_optimized(frames, output_path):
     if not frames or len(frames) == 0:
@@ -36,7 +46,7 @@ def save_video_optimized(frames, output_path):
         result = subprocess.run(cmd, capture_output=True, text=True)
         
         if result.returncode != 0:
-            print(f"[FFmpeg Error] {result.stderr}")
+            logger.error(f"FFmpeg Error: {result.stderr}")
             return False
 
         if os.path.exists(temp_raw_path):
@@ -45,42 +55,42 @@ def save_video_optimized(frames, output_path):
         return True
         
     except Exception as e:
-        print(f"[Alert] Video Save Error: {e}")
+        logger.error(f"Video Save Error: {e}")
         if os.path.exists(temp_raw_path):
             os.remove(temp_raw_path)
         return False
     
 def send_telegram_photo(token, chat_id, photo_path, caption):
-    """Зураг Telegram-руу илгээх"""
+    """Зураг Telegram-руу илгээх (retry логиктой)"""
     try:
         url = f"https://api.telegram.org/bot{token}/sendPhoto"
         with open(photo_path, 'rb') as p:
-            r = requests.post(url, data={
+            r = _session.post(url, data={
                 'chat_id': chat_id,
                 'caption': caption,
                 'parse_mode': 'Markdown'
             }, files={'photo': p}, timeout=30)
-        print(f"[Telegram] Зураг: {r.json().get('ok')}")
+        logger.info(f"Telegram Зураг: {r.json().get('ok')}")
         return r.json().get('ok', False)
     except Exception as e:
-        print(f"[Telegram] Зураг алдаа: {e}")
+        logger.error(f"Telegram Зураг алдаа: {e}")
         return False
 
 
 def send_telegram_video(token, chat_id, video_path, caption):
-    """Видео Telegram-руу илгээх"""
+    """Видео Telegram-руу илгээх (retry логиктой)"""
     try:
         url = f"https://api.telegram.org/bot{token}/sendVideo"
         with open(video_path, 'rb') as v:
-            r = requests.post(url, data={
+            r = _session.post(url, data={
                 'chat_id': chat_id,
                 'caption': caption,
                 'parse_mode': 'Markdown'
             }, files={'video': v}, timeout=60)
-        print(f"[Telegram] Видео: {r.json().get('ok')}")
+        logger.info(f"Telegram Видео: {r.json().get('ok')}")
         return r.json().get('ok', False)
     except Exception as e:
-        print(f"[Telegram] Видео алдаа: {e}")
+        logger.error(f"Telegram Видео алдаа: {e}")
         return False
 
 
@@ -88,7 +98,7 @@ def alert_worker():
 
     while True:
         data = alert_queue.get()
-        print(f"[Alert] Дата ирлээ: id={data.get('id')} reason={data.get('reason')}")
+        logger.info(f"Alert дата ирлээ: id={data.get('id')} reason={data.get('reason')}")
 
         try:
             frame = data.get('frame')
@@ -140,7 +150,7 @@ def alert_worker():
 
             # Token хоосон эсэхийг шалгах
             if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
-                print("[Telegram]  TOKEN эсвэл CHAT_ID хоосон байна!")
+                logger.warning("Telegram TOKEN эсвэл CHAT_ID тохируулаагүй байна.")
             else:
                 if video_saved and os.path.exists(video_path):
                     ok = send_telegram_video(TELEGRAM_TOKEN, TELEGRAM_CHAT_ID, video_path, caption)
@@ -154,8 +164,6 @@ def alert_worker():
                 os.remove(tg_photo_path)
 
         except Exception as e:
-            print(f"[Alert]  Worker алдаа: {e}")
-            import traceback
-            traceback.print_exc()  # ← дэлгэрэнгүй алдаа
+            logger.error(f"Alert Worker алдаа: {e}", exc_info=True)
         finally:
             alert_queue.task_done()

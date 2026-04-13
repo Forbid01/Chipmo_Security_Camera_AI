@@ -1,44 +1,55 @@
 import cv2
 import time
 import queue
+import logging
 import threading
 import app.core.state as state
+from app.core.config import DEFAULT_CAMERA_SOURCES
+from app.db.repository.users import UserRepository
 
-WIFI_CAMERA_URL  = "http://192.168.0.207:4747/video"
-AXIS_CAMERA_URL  = "http://185.194.123.84:8001/axis-cgi/mjpg/video.cgi"
-MAC_CAMERA_INDEX = 0
+logger = logging.getLogger(__name__)
+user_repo = UserRepository()
+
+
+CAMERA_NAME_MAP = {
+    "mac": "Mac-Camera",
+    "phone": "Phone-Camera",
+    "axis": "Axis-Camera",
+}
 
 
 def capture_stream(source, camera_name):
-    print(f" {camera_name} холбогдож байна: {source}")
+    if not source and source != 0:
+        logger.warning(f"{camera_name}: URL тохируулаагүй байна. Алгасаж байна.")
+        return
+
+    logger.info(f"{camera_name} холбогдож байна: {source}")
     cap = cv2.VideoCapture(source)
     cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
 
     if not cap.isOpened():
-        print(f" {camera_name} Error: Холболт амжилтгүй.")
+        logger.error(f"{camera_name}: Холболт амжилтгүй.")
         return
 
-    print(f" {camera_name} амжилттай холбогдлоо.")
+    logger.info(f"{camera_name} амжилттай холбогдлоо.")
 
     try:
         while True:
             success, frame = cap.read()
 
             if not success:
-                print(f" {camera_name} тасарлаа. Дахин холбогдож байна...")
+                logger.warning(f"{camera_name} тасарлаа. Дахин холбогдож байна...")
                 time.sleep(2)
                 cap.open(source)
                 continue
 
             # 1. Стриминг frame шинэчлэх
             if camera_name == "Mac-Camera":
-                if state.latest_mac_frame is None:
-                    state.latest_mac_frame = frame.copy()
+                state.latest_mac_frame = frame.copy()
             elif camera_name == "Phone-Camera":
                 state.latest_phone_frame = frame.copy()
             elif camera_name == "Axis-Camera":
-                if state.latest_axis_frame is None:
-                    state.latest_axis_frame = frame.copy()
+                state.latest_axis_frame = frame.copy()
 
             # 2. AI руу илгээх (Mac болон Axis)
             if camera_name in ["Mac-Camera", "Axis-Camera"]:
@@ -59,33 +70,58 @@ def capture_stream(source, camera_name):
             time.sleep(0.02)
 
     except Exception as e:
-        print(f" {camera_name} Exception: {e}")
+        logger.error(f"{camera_name} Exception: {e}")
     finally:
         cap.release()
-        print(f" {camera_name} холболт хаагдлаа.")
+        logger.info(f"{camera_name} холболт хаагдлаа.")
+
+
+def load_camera_sources():
+    camera_sources = []
+
+    for camera_type, source in DEFAULT_CAMERA_SOURCES.items():
+        if source or source == 0:
+            camera_sources.append((source, CAMERA_NAME_MAP[camera_type]))
+
+    try:
+        cameras = user_repo.get_all_cameras()
+    except Exception as exc:
+        logger.warning(f"DB-с камерын тохиргоо уншихад алдаа гарлаа: {exc}")
+        cameras = []
+
+    for camera in cameras:
+        camera_type = (camera.get("type") or "").strip().lower()
+        source = camera.get("url")
+        name = camera.get("name") or CAMERA_NAME_MAP.get(camera_type, "External-Camera")
+
+        if camera_type not in CAMERA_NAME_MAP or not source:
+            continue
+
+        existing_index = next(
+            (idx for idx, (_, existing_name) in enumerate(camera_sources) if existing_name == CAMERA_NAME_MAP[camera_type]),
+            None,
+        )
+
+        resolved = (source, name)
+        if existing_index is None:
+            camera_sources.append(resolved)
+        else:
+            camera_sources[existing_index] = resolved
+
+    return camera_sources
 
 
 def video_capture():
-    mac_thread = threading.Thread(
-        target=capture_stream,
-        args=(MAC_CAMERA_INDEX, "Mac-Camera"),
-        daemon=True
-    )
-    phone_thread = threading.Thread(
-        target=capture_stream,
-        args=(WIFI_CAMERA_URL, "Phone-Camera"),
-        daemon=True
-    )
-    axis_thread = threading.Thread(
-        target=capture_stream,
-        args=(AXIS_CAMERA_URL, "Axis-Camera"),
-        daemon=True
-    )
+    threads = []
 
-    mac_thread.start()
-    phone_thread.start()
-    axis_thread.start()
+    for source, camera_name in load_camera_sources():
+        thread = threading.Thread(
+            target=capture_stream,
+            args=(source, camera_name),
+            daemon=True
+        )
+        thread.start()
+        threads.append(thread)
 
-    mac_thread.join()
-    phone_thread.join()
-    axis_thread.join()
+    for thread in threads:
+        thread.join()

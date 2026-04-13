@@ -7,7 +7,7 @@ VIDEO_BUFFER_MAXLEN = 150
 video_buffer = deque(maxlen=VIDEO_BUFFER_MAXLEN)
 ai_input_queue = queue.Queue(maxsize=4)
 web_display_queue = queue.Queue(maxsize=1)
-alert_queue = queue.Queue()
+alert_queue = queue.Queue(maxsize=100)
 
 latest_mac_frame = None
 latest_phone_frame = None
@@ -37,12 +37,24 @@ def clear_all_queues():
 
 
 def safe_update_display_queue(frame, source: str = "Mac-Camera"):  # ← source нэмэгдсэн
-    global latest_mac_frame, latest_axis_frame
+    global latest_mac_frame, latest_phone_frame, latest_axis_frame
 
     if frame is None:
         return
 
     if source == "Mac-Camera":
         latest_mac_frame = frame
+    elif source == "Phone-Camera":
+        latest_phone_frame = frame
     elif source == "Axis-Camera":
         latest_axis_frame = frame
+
+
+def get_latest_frame(camera_id: str):
+    if camera_id == "mac":
+        return latest_mac_frame
+    if camera_id == "phone":
+        return latest_phone_frame
+    if camera_id == "axis":
+        return latest_axis_frame
+    return None

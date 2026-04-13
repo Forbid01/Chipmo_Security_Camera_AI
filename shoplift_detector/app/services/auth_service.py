@@ -6,11 +6,12 @@ from datetime import datetime, timedelta
 from fastapi import HTTPException, status, Depends
 
 from ..core.security import (
-    verify_password, 
-    get_password_hash, 
-    create_access_token, 
-    oauth2_scheme, 
-    SECRET_KEY, 
+    verify_password,
+    get_password_hash,
+    create_access_token,
+    validate_password_strength,
+    oauth2_scheme,
+    SECRET_KEY,
     ALGORITHM
 )
 from ..db.repository.users import UserRepository
@@ -26,6 +27,7 @@ class AuthService:
     @classmethod
     async def register_user(cls, username, email, password, phone_number=None, full_name=None, role="user"):
         """Шинэ хэрэглэгч бүртгэх"""
+        validate_password_strength(password)
         if user_repo.get_by_identifier(username) or user_repo.get_by_email(email):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -119,7 +121,7 @@ class AuthService:
         if not user:
             return False
 
-        otp_code = ''.join(random.choices(string.digits, k=6))
+        otp_code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=8))
         expiry = datetime.utcnow() + timedelta(minutes=15)
 
         user_repo.update_recovery_data(user['id'], otp_code, expiry)
@@ -146,6 +148,7 @@ class AuthService:
         user = user_repo.get_by_email(email)
         if not user: return False
 
+        validate_password_strength(new_password)
         hashed_pwd = get_password_hash(new_password)
         user_repo.update_password(user['id'], hashed_pwd)
         user_repo.clear_recovery_data(user['id'])

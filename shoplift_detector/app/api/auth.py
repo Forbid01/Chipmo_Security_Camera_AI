@@ -1,8 +1,13 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from fastapi.security import OAuth2PasswordRequestForm
 from ..services.auth_service import AuthService
 from pydantic import BaseModel, EmailStr
 from typing import List
+
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+
+limiter = Limiter(key_func=get_remote_address)
 
 # Router тохиргоо
 router = APIRouter(prefix="/auth", tags=["Authentication"])
@@ -59,7 +64,8 @@ async def register(user_data: UserCreate):
     return {"message": "Хэрэглэгч амжилттай бүртгэгдлээ", "user_id": user_id}
 
 @router.post("/login")
-async def login(form_data: OAuth2PasswordRequestForm = Depends()):
+@limiter.limit("10/minute")
+async def login(request: Request, form_data: OAuth2PasswordRequestForm = Depends()):
     """Нэвтрэх болон JWT Токен авах"""
     user = AuthService.authenticate_user(form_data.username, form_data.password)
     if not user:
@@ -91,8 +97,9 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends()):
 # --- НУУЦ ҮГ СЭРГЭЭХ ---
 
 @router.post("/forgot-password")
-async def forgot_password(request: ForgotPasswordRequest):
-    success = await AuthService.generate_recovery_code(request.email)
+@limiter.limit("5/minute")
+async def forgot_password(request: Request, data: ForgotPasswordRequest):
+    success = await AuthService.generate_recovery_code(data.email)
     if not success:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -101,8 +108,9 @@ async def forgot_password(request: ForgotPasswordRequest):
     return {"message": "Сэргээх код имэйл рүү илгээгдлээ."}
 
 @router.post("/verify-code")
-async def verify_code(request: VerifyCodeRequest):
-    is_valid = AuthService.verify_recovery_code(request.email, request.code)
+@limiter.limit("5/minute")
+async def verify_code(request: Request, data: VerifyCodeRequest):
+    is_valid = AuthService.verify_recovery_code(data.email, data.code)
     if not is_valid:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -111,8 +119,9 @@ async def verify_code(request: VerifyCodeRequest):
     return {"message": "Код баталгаажлаа."}
 
 @router.post("/reset-password")
-async def reset_password(request: ResetPasswordRequest):
-    success = AuthService.reset_password(request.email, request.code, request.new_password)
+@limiter.limit("5/minute")
+async def reset_password(request: Request, data: ResetPasswordRequest):
+    success = AuthService.reset_password(data.email, data.code, data.new_password)
     if not success:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

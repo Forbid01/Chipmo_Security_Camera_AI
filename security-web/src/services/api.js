@@ -1,8 +1,10 @@
 import axios from "axios";
 
 export const API_BASE_URL =
-  "https://chipmosecuritycameraai-production.up.railway.app";
+  import.meta.env.VITE_API_BASE_URL || "https://chipmosecuritycameraai-production.up.railway.app";
 export const VIDEO_FEED_URL = `${API_BASE_URL}/video_feed`;
+export const getVideoFeedUrl = (cameraId) =>
+  cameraId ? `${API_BASE_URL}/video_feed/${cameraId}` : VIDEO_FEED_URL;
 
 // 1. Axios instance үүсгэх
 export const api = axios.create({

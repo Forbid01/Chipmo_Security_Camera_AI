@@ -1,7 +1,10 @@
+import logging
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from datetime import datetime, timedelta
 from app.db.base import BaseDB
+
+logger = logging.getLogger(__name__)
 
 class AlertRepository(BaseDB):
     def __init__(self):
@@ -10,26 +13,32 @@ class AlertRepository(BaseDB):
         self._create_table()
 
     def _create_table(self):
-        query = """
-        CREATE TABLE IF NOT EXISTS alerts (
-            id SERIAL PRIMARY KEY,
-            person_id INTEGER NOT NULL,
-            organization_id INTEGER REFERENCES organizations(id), -- Энийг нэмнэ
-            event_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            image_path TEXT,
-            description TEXT
-        );
-        """ 
+        queries = [
+            """
+            CREATE TABLE IF NOT EXISTS alerts (
+                id SERIAL PRIMARY KEY,
+                person_id INTEGER NOT NULL,
+                organization_id INTEGER REFERENCES organizations(id),
+                event_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                image_path TEXT,
+                description TEXT
+            );
+            """,
+            "CREATE INDEX IF NOT EXISTS idx_alerts_org_id ON alerts(organization_id);",
+            "CREATE INDEX IF NOT EXISTS idx_alerts_event_time ON alerts(event_time DESC);",
+            "CREATE INDEX IF NOT EXISTS idx_alerts_person_id ON alerts(person_id);",
+        ]
         conn = self._get_connection()
         if conn:
             try:
                 with conn.cursor() as cur:
-                    cur.execute(query)
+                    for q in queries:
+                        cur.execute(q)
                     conn.commit()
             except Exception as e:
-                print(f" Alerts Table Creation Error: {e}")
+                logger.error(f"Alerts Table Creation Error: {e}")
             finally:
-                conn.close()
+                self._return_connection(conn)
 
     def insert_alert(self, person_id: int, image_path: str, reason: str):
         conn = self._get_connection()
@@ -39,8 +48,8 @@ class AlertRepository(BaseDB):
         try:
             with conn.cursor() as cur:
                 check_query = """
-                SELECT event_time FROM alerts 
-                WHERE person_id = %s 
+                SELECT event_time FROM alerts
+                WHERE person_id = %s
                 ORDER BY event_time DESC LIMIT 1
                 """
                 cur.execute(check_query, (person_id,))
@@ -51,42 +60,49 @@ class AlertRepository(BaseDB):
                     if datetime.now() - last_time < timedelta(seconds=10):
                         return
 
-                # 2. Шинэ рекорд оруулах
                 insert_query = """
                 INSERT INTO alerts (person_id, image_path, description)
                 VALUES (%s, %s, %s)
                 """
                 cur.execute(insert_query, (person_id, image_path, reason))
                 conn.commit()
-                print(f" DB Saved: Person ID {person_id} - {reason}")
-                
-        except Exception as e:
-            print(f" DB Insert Error: {e}")
-        finally:
-            conn.close()
+                logger.info(f"DB Saved: Person ID {person_id} - {reason}")
 
-    def get_latest_alerts(self, organization_id: int, limit: int = 20):
-        # Зөвхөн тухайн байгууллагын alerts-ыг шүүж авна
-        query = """
-        SELECT * FROM alerts 
-        WHERE organization_id = %s 
-        ORDER BY event_time DESC LIMIT %s
-        """
+        except Exception as e:
+            logger.error(f"DB Insert Error: {e}")
+        finally:
+            self._return_connection(conn)
+
+    def get_latest_alerts(self, organization_id: int = None, limit: int = 20, offset: int = 0):
+        if organization_id:
+            query = """
+            SELECT * FROM alerts
+            WHERE organization_id = %s
+            ORDER BY event_time DESC LIMIT %s OFFSET %s
+            """
+            params = (organization_id, limit, offset)
+        else:
+            query = """
+            SELECT * FROM alerts
+            ORDER BY event_time DESC LIMIT %s OFFSET %s
+            """
+            params = (limit, offset)
+
         conn = self._get_connection()
-        if not conn: return []
-        
+        if not conn:
+            return []
+
         try:
             with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                cur.execute(query, (organization_id, limit))
+                cur.execute(query, params)
                 rows = cur.fetchall()
-                
-                # Төгсгөлийн боловсруулалт: Датаг текст хэлбэрт шилжүүлэх
+
                 for row in rows:
                     if row.get('event_time'):
                         row['event_time'] = row['event_time'].strftime("%Y-%m-%d %H:%M:%S")
                 return rows
         except Exception as e:
-            print(f" DB Select Error: {e}")
+            logger.error(f"DB Select Error: {e}")
             return []
         finally:
-            conn.close()
+            self._return_connection(conn)

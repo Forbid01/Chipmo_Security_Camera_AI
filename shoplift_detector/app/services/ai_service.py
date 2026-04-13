@@ -5,11 +5,14 @@ import cv2
 import torch
 import queue
 import time
+import logging
 import numpy as np
 import math
 import subprocess
 from concurrent.futures import ThreadPoolExecutor
 from ultralytics import YOLO
+
+logger = logging.getLogger(__name__)
 
 try:
     from app.core.config import ALERTS_DIR
@@ -19,7 +22,7 @@ try:
     )
     from app.db.repository.alerts import AlertRepository
 except ImportError:
-    print("Анхаар: app.core модулиуд олдохгүй байна.")
+    logger.error("app.core модулиуд олдохгүй байна.")
 
 STALE_TRACK_FRAMES  = 150
 SCORE_DECAY         = 0.98
@@ -61,7 +64,7 @@ class ShopliftDetector:
             subprocess.run(cmd, check=True, capture_output=True)
             os.replace(temp_path, video_path)
         except Exception as e:
-            print(f"[FFmpeg] Алдаа: {e}")
+            logger.error(f"FFmpeg Алдаа: {e}")
 
     def _async_save_alert(self, yolo_id, frame_to_save, name: str, reason: str, bbox: list):
         try:
@@ -94,7 +97,7 @@ class ShopliftDetector:
                 "frame": frame_to_save, "bbox": bbox,
             })
         except Exception as e:
-            print(f"[Alert] Хадгалах алдаа: {e}")
+            logger.error(f"Alert Хадгалах алдаа: {e}")
 
     @staticmethod
     def _keypoint_valid(kp) -> bool:
@@ -371,6 +374,6 @@ def ai_inference():
         else "cuda" if torch.cuda.is_available()
         else "cpu"
     )
-    print(f"[AI] Төхөөрөмж: {device}")
+    logger.info(f"AI Төхөөрөмж: {device}")
     detector = ShopliftDetector(device_type=device)
     detector.run_inference()

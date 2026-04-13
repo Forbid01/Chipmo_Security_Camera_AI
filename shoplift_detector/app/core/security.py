@@ -1,4 +1,6 @@
 import os
+import re
+import logging
 from datetime import datetime, timedelta
 from typing import Optional
 import jwt
@@ -8,10 +10,32 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 
 load_dotenv()
+logger = logging.getLogger(__name__)
 
-SECRET_KEY = os.getenv("SECRET_KEY", "your-super-hidden-secret-key")
+SECRET_KEY = os.getenv("SECRET_KEY")
+if not SECRET_KEY:
+    raise RuntimeError("SECRET_KEY environment variable is required. Set it in .env file.")
+
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "60"))
+
+MIN_PASSWORD_LENGTH = 8
+PASSWORD_PATTERN = re.compile(
+    r'^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*()_+\-=\[\]{}|;:,.<>?]).{8,}$'
+)
+
+
+def validate_password_strength(password: str) -> None:
+    if len(password) < MIN_PASSWORD_LENGTH:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Нууц үг хамгийн багадаа {MIN_PASSWORD_LENGTH} тэмдэгт байх ёстой."
+        )
+    if not PASSWORD_PATTERN.match(password):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Нууц үг том, жижиг үсэг, тоо, тусгай тэмдэгт агуулсан байх ёстой."
+        )
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login")
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")

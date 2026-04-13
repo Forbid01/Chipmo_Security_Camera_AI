@@ -1,6 +1,6 @@
 // src/components/Monitoring/VideoFeed.jsx
 import React from 'react';
-import { VIDEO_FEED_URL } from '../../services/api';
+import { getVideoFeedUrl } from '../../services/api';
 import { Camera } from 'lucide-react';
 
 export const VideoFeed = () => {
@@ -23,7 +23,7 @@ export const VideoFeed = () => {
       <div className="relative w-full aspect-video bg-black flex items-center justify-center">
         {/* АМЬД КАМЕРЫН ДҮРС ЭНД ГАРНА */}
         <img 
-          src={VIDEO_FEED_URL} 
+          src={getVideoFeedUrl('mac')} 
           alt="AI Camera Feed" 
           className="w-full h-full object-contain"
         />

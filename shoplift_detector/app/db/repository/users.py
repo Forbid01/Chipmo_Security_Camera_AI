@@ -23,7 +23,6 @@ class UserRepository(BaseDB):
             );
             """,
             # 2. Хэрэглэгчид (Users)
-            # ON DELETE SET NULL: Байгууллага устахад хэрэглэгч устахгүй, харин org_id нь хоосон болно.
             """
             CREATE TABLE IF NOT EXISTS users (
                 id SERIAL PRIMARY KEY,
@@ -41,7 +40,6 @@ class UserRepository(BaseDB):
             );
             """,
             # 3. Камерууд (Cameras)
-            # ON DELETE CASCADE: Байгууллага устахад холбоотой бүх камер автоматаар устгагдана.
             """
             CREATE TABLE IF NOT EXISTS cameras (
                 id SERIAL PRIMARY KEY,
@@ -51,16 +49,24 @@ class UserRepository(BaseDB):
                 organization_id INTEGER REFERENCES organizations(id) ON DELETE CASCADE,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
-            """
+            """,
+            # 4. Индексүүд (Performance)
+            "CREATE INDEX IF NOT EXISTS idx_users_org_id ON users(organization_id);",
+            "CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);",
+            "CREATE INDEX IF NOT EXISTS idx_cameras_org_id ON cameras(organization_id);",
         ]
+        conn = self._get_connection()
+        if not conn:
+            return
         try:
-            with self._get_connection() as conn:
-                with conn.cursor() as cur:
-                    for q in queries:
-                        cur.execute(q)
-                    conn.commit()
+            with conn.cursor() as cur:
+                for q in queries:
+                    cur.execute(q)
+                conn.commit()
         except Exception as e:
             logger.error(f"Table Creation Error: {e}")
+        finally:
+            self._return_connection(conn)
 
     # --- ХЭРЭГЛЭГЧИЙН ҮЙЛДЛҮҮД ---
 
@@ -75,6 +81,10 @@ class UserRepository(BaseDB):
     def get_by_identifier(self, identifier: str) -> Optional[Dict[str, Any]]:
         query = "SELECT * FROM users WHERE (username = %s OR email = %s) AND is_active = TRUE"
         return self._execute_fetch_one(query, (identifier, identifier))
+
+    def get_by_email(self, email: str) -> Optional[Dict[str, Any]]:
+        query = "SELECT * FROM users WHERE email = %s AND is_active = TRUE"
+        return self._execute_fetch_one(query, (email,))
 
     # --- БАЙГУУЛЛАГА (ADMIN) ҮЙЛДЛҮҮД ---
 
@@ -132,44 +142,60 @@ class UserRepository(BaseDB):
     # --- ӨГӨГДЛИЙН САНГИЙН ТУСЛАХ ФУНКЦҮҮД (HELPERS) ---
 
     def _execute_returning_id(self, query, params) -> Optional[int]:
+        conn = self._get_connection()
+        if not conn:
+            return None
         try:
-            with self._get_connection() as conn:
-                with conn.cursor() as cur:
-                    cur.execute(query, params)
-                    result = cur.fetchone()
-                    conn.commit()
-                    return result[0] if result else None
+            with conn.cursor() as cur:
+                cur.execute(query, params)
+                result = cur.fetchone()
+                conn.commit()
+                return result[0] if result else None
         except Exception as e:
             logger.error(f"Database Insert Error: {e}")
             return None
+        finally:
+            self._return_connection(conn)
 
     def _execute_fetch_one(self, query, params=None) -> Optional[Dict[str, Any]]:
+        conn = self._get_connection()
+        if not conn:
+            return None
         try:
-            with self._get_connection() as conn:
-                with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-                    cur.execute(query, params)
-                    return cur.fetchone()
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                cur.execute(query, params)
+                return cur.fetchone()
         except Exception as e:
             logger.error(f"Database Fetch Error: {e}")
             return None
+        finally:
+            self._return_connection(conn)
 
     def _execute_fetch_all(self, query, params=None) -> List[Dict[str, Any]]:
+        conn = self._get_connection()
+        if not conn:
+            return []
         try:
-            with self._get_connection() as conn:
-                with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-                    cur.execute(query, params)
-                    return cur.fetchall()
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                cur.execute(query, params)
+                return cur.fetchall()
         except Exception as e:
             logger.error(f"Database Fetch List Error: {e}")
             return []
+        finally:
+            self._return_connection(conn)
 
     def _execute_update(self, query, params) -> bool:
+        conn = self._get_connection()
+        if not conn:
+            return False
         try:
-            with self._get_connection() as conn:
-                with conn.cursor() as cur:
-                    cur.execute(query, params)
-                    conn.commit()
-                    return True
+            with conn.cursor() as cur:
+                cur.execute(query, params)
+                conn.commit()
+                return True
         except Exception as e:
             logger.error(f"Database Update Error: {e}")
             return False
+        finally:
+            self._return_connection(conn)

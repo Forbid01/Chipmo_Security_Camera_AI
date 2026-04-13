@@ -1,10 +1,12 @@
 import os
+import logging
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from dotenv import load_dotenv
 
 load_dotenv()
+logger = logging.getLogger(__name__)
 
 async def send_otp_email(receiver_email: str, otp_code: str):
     """Нууц үг сэргээх 6 оронтой OTP кодыг хэрэглэгчийн имэйл рүү илгээнэ."""
@@ -51,10 +53,10 @@ async def send_otp_email(receiver_email: str, otp_code: str):
         server.login(mail_user, mail_pass)
         server.send_message(msg)
         server.quit()
-        print(f"OTP sent successfully to {receiver_email}")
+        logger.info(f"OTP sent successfully to {receiver_email}")
         return True
     except Exception as e:
-        print(f"Failed to send OTP: {e}")
+        logger.error(f"Failed to send OTP: {e}")
         return False
 
 async def send_contact_email(name: str, email: str, subject: str, message: str):
@@ -95,7 +97,7 @@ async def send_contact_email(name: str, email: str, subject: str, message: str):
         server.login(mail_user, mail_pass)
         server.send_message(msg)
         server.quit()
-        print("Email sent successfully via smtplib")
+        logger.info("Email sent successfully via smtplib")
     except Exception as e:
-        print(f"Failed to send email: {e}")
+        logger.error(f"Failed to send email: {e}")
         raise e

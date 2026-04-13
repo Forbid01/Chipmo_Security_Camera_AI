@@ -1,46 +1,102 @@
 import os
+import logging
 import cv2
 import asyncio
 import numpy as np
 from fastapi import FastAPI, Request, Depends, HTTPException, status
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+from starlette.middleware.base import BaseHTTPMiddleware
 
 # Тохиргоо болон State-үүд
-from app.core.config import ALERTS_DIR
+from app.core.config import ALERTS_DIR, ALLOWED_ORIGINS
 import app.core.state as state
 from app.db.repository.alerts import AlertRepository
 
 # Аюулгүй байдал болон Router-үүд
-# ТАЙЛБАР: Замууд нь чиний хавтасны бүтцээс хамаарч өөр байж магадгүй, шалгаарай!
 from app.api.auth import router as auth_router
 from app.services.auth_service import AuthService
 
 from pydantic import EmailStr, BaseModel
 from app.services.email_service import send_contact_email
 
-app = FastAPI(title="Chipmo Security AI Portal")
+logger = logging.getLogger(__name__)
+
+# Rate limiter тохиргоо
+limiter = Limiter(key_func=get_remote_address)
+
+app = FastAPI(title="Chipmo Security AI Portal", docs_url="/docs", redoc_url="/redoc")
+app.state.limiter = limiter
+
+
+@app.exception_handler(RateLimitExceeded)
+async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
+    return JSONResponse(
+        status_code=429,
+        content={"detail": "Хэт олон хүсэлт илгээлээ. Түр хүлээнэ үү."}
+    )
+
+
+# Security headers middleware
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        return response
+
+
+app.add_middleware(SecurityHeadersMiddleware)
+
 alert_repo = AlertRepository()
 
 # Статик файлуудыг холбох (Зураг, Видео)
 app.mount("/static", StaticFiles(directory=ALERTS_DIR), name="static")
 
-# CORS Тохиргоо (React-оос хандах боломжийг нээнэ)
+# CORS Тохиргоо
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS if ALLOWED_ORIGINS else ["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 # --- AUTH ROUTER ИНТЕГРАЦИ ---
-# Энэ мөр нь /auth/register, /auth/login, /auth/admin/... бүх замыг идэвхжүүлнэ
 app.include_router(auth_router)
 
+
+# --- HEALTH CHECK ---
+@app.get("/health")
+async def health_check():
+    return {
+        "status": "ok",
+        "cameras": {
+            "mac": state.latest_mac_frame is not None,
+            "phone": state.latest_phone_frame is not None,
+            "axis": state.latest_axis_frame is not None,
+        },
+        "queues": {
+            "ai_input": state.ai_input_queue.qsize(),
+            "alert": state.alert_queue.qsize(),
+        },
+    }
+
 # --- VIDEO STREAMING LOGIC ---
+
+VALID_CAMERA_IDS = {"mac", "phone", "axis"}
+
+
+def get_camera_frame(camera_id: str):
+    return state.get_latest_frame(camera_id)
 
 async def generate_frames():
     while True:
@@ -74,13 +130,37 @@ async def generate_frames():
             await asyncio.sleep(0.033)
 
         except Exception as e:
-            print(f"Streaming Error: {e}")
+            logger.error(f"Streaming Error: {e}")
+            await asyncio.sleep(0.1)
+
+
+async def generate_camera_frames(camera_id: str):
+    while True:
+        try:
+            frame = get_camera_frame(camera_id)
+            if frame is None:
+                await asyncio.sleep(0.1)
+                continue
+
+            ret, buffer = cv2.imencode(".jpg", frame.copy(), [cv2.IMWRITE_JPEG_QUALITY, 90])
+            if not ret:
+                await asyncio.sleep(0.03)
+                continue
+
+            yield (
+                b"--frame\r\n"
+                b"Content-Type: image/jpeg\r\n\r\n" + buffer.tobytes() + b"\r\n"
+            )
+            await asyncio.sleep(0.033)
+        except Exception as exc:
+            logger.error(f"{camera_id} stream error: {exc}")
             await asyncio.sleep(0.1)
 
 # --- AUTH ENDPOINTS (REACT LOGIN-Д ЗОРИУЛСАН) ---
 
 @app.post("/token")
-async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends()):
+@limiter.limit("10/minute")
+async def login_for_access_token(request: Request, form_data: OAuth2PasswordRequestForm = Depends()):
     """
     React Login.jsx-ээс ирэх хүсэлтийг хүлээн авч, 
     AuthService-ээр баталгаажуулан JWT токен болон User Role-ийг буцаана.
@@ -148,16 +228,34 @@ async def video_feed():
         media_type="multipart/x-mixed-replace; boundary=frame"
     )
 
+
+@app.get("/video_feed/{camera_id}")
+async def video_feed_by_camera(camera_id: str):
+    if camera_id not in VALID_CAMERA_IDS:
+        raise HTTPException(status_code=404, detail="Камер олдсонгүй")
+
+    return StreamingResponse(
+        generate_camera_frames(camera_id),
+        media_type="multipart/x-mixed-replace; boundary=frame",
+    )
+
 @app.get("/alerts")
 async def get_alerts(request: Request, user: dict = Depends(AuthService.get_current_user)):
     try:
-        # Хэрэв энгийн хэрэглэгч бол зөвхөн өөрийн байгууллагын алдааг харна гэх мэт 
-        # логик энд нэмж болно (user['org_id'] ашиглаад)
-        alerts = alert_repo.get_latest_alerts(limit=20)
+        org_id = user.get("org_id")
+        if not org_id and user.get("role") != "super_admin":
+            raise HTTPException(status_code=403, detail="Байгууллага тодорхойгүй байна.")
+        alerts = alert_repo.get_latest_alerts(organization_id=org_id, limit=20)
         base_url = str(request.base_url).rstrip("/")
 
         for alert in alerts:
-            file_name = os.path.basename(alert['image_path'])
+            image_path = alert.get("image_path")
+            if not image_path:
+                alert["web_url"] = None
+                alert["video_url"] = None
+                continue
+
+            file_name = os.path.basename(image_path)
             video_name = file_name.replace('.jpg', '.mp4')
             video_full_path = os.path.join(ALERTS_DIR, video_name)
             alert['web_url'] = f"{base_url}/static/{file_name}"
@@ -167,5 +265,8 @@ async def get_alerts(request: Request, user: dict = Depends(AuthService.get_curr
                 alert['video_url'] = None
 
         return {"status": "success", "data": alerts}
+    except HTTPException:
+        raise
     except Exception as e:
-        return {"status": "error", "message": str(e)}
+        logger.error(f"Alerts endpoint error: {e}")
+        raise HTTPException(status_code=500, detail="Alert мэдээлэл уншихад алдаа гарлаа.")
