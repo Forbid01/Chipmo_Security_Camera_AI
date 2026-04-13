@@ -38,17 +38,17 @@ export const loginUser = async (username, password) => {
 // --- НУУЦ ҮГ СЭРГЭЭХ (AUTH) ---
 
 export const forgotPassword = async (email) => {
-  const response = await api.post("/auth/forgot-password", { email });
+  const response = await api.post("/forgot-password", { email });
   return response.data;
 };
 
 export const verifyCode = async (email, code) => {
-  const response = await api.post("/auth/verify-code", { email, code });
+  const response = await api.post("/verify-code", { email, code });
   return response.data;
 };
 
 export const resetPassword = async (email, code, newPassword) => {
-  const response = await api.post("/auth/reset-password", {
+  const response = await api.post("/reset-password", {
     email: email,
     code: code,
     new_password: newPassword,
@@ -60,33 +60,33 @@ export const resetPassword = async (email, code, newPassword) => {
 
 // Байгууллагууд
 export const getOrganizations = async () => {
-  const response = await api.get("/auth/admin/organizations");
+  const response = await api.get("/admin/organizations");
   return response.data;
 };
 
 export const createOrganization = async (name) => {
-  const response = await api.post("/auth/admin/organizations", { name });
+  const response = await api.post("/admin/organizations", { name });
   return response.data;
 };
 
 export const deleteOrganization = async (id) => {
-  const response = await api.delete(`/auth/admin/organizations/${id}`);
+  const response = await api.delete(`/admin/organizations/${id}`);
   return response.data;
 };
 
 // Камерууд
 export const getCameras = async () => {
-  const response = await api.get("/auth/admin/cameras");
+  const response = await api.get("/admin/cameras");
   return response.data;
 };
 
 export const addCamera = async (cameraData) => {
-  const response = await api.post("/auth/admin/cameras", cameraData);
+  const response = await api.post("/admin/cameras", cameraData);
   return response.data;
 };
 
 export const deleteCamera = async (id) => {
-  const response = await api.delete(`/auth/admin/cameras/${id}`);
+  const response = await api.delete(`/admin/cameras/${id}`);
   return response.data;
 };
 

@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException, BackgroundTasks, status
 from pydantic import EmailStr, BaseModel
 from ..services.auth_service import AuthService
 
-router = APIRouter(prefix="/auth", tags=["password-recovery"])
+router = APIRouter(prefix="/", tags=["password-recovery"])
 
 # --- Request Models ---
 class ForgotPasswordRequest(BaseModel):
