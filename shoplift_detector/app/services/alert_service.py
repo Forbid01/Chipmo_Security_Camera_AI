@@ -11,32 +11,45 @@ def save_video_optimized(frames, output_path):
         return False
 
     temp_raw_path = output_path.replace(".mp4", "_raw.mp4")
+    
     try:
         height, width, _ = frames[0].shape
-        fourcc = cv2.VideoWriter_fourcc(*'avc1')
+        fourcc = cv2.VideoWriter_fourcc(*'mp4v') 
         out = cv2.VideoWriter(temp_raw_path, fourcc, 20.0, (width, height))
+        
         for f in frames:
             out.write(f)
         out.release()
 
         cmd = [
-            'ffmpeg', '-y', '-i', temp_raw_path,
-            '-c:v', 'libx264', '-pix_fmt', 'yuv420p',
-            '-movflags', 'faststart', '-an',
+            'ffmpeg', '-y', 
+            '-i', temp_raw_path,
+            '-c:v', 'libx264',
+            '-preset', 'ultrafast',
+            '-crf', '28',
+            '-pix_fmt', 'yuv420p',
+            '-movflags', 'faststart',
+            '-an',
             output_path
         ]
-        subprocess.run(cmd, check=True, capture_output=True)
+        
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        
+        if result.returncode != 0:
+            print(f"[FFmpeg Error] {result.stderr}")
+            return False
 
         if os.path.exists(temp_raw_path):
             os.remove(temp_raw_path)
+        
         return True
+        
     except Exception as e:
         print(f"[Alert] Video Save Error: {e}")
         if os.path.exists(temp_raw_path):
             os.remove(temp_raw_path)
         return False
-
-
+    
 def send_telegram_photo(token, chat_id, photo_path, caption):
     """Зураг Telegram-руу илгээх"""
     try:

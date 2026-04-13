@@ -1,10 +1,11 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
-import tailwindcss from "@tailwindcss/vite"; // 1. Энийг нэм
+import tailwindcss from "@tailwindcss/vite";
 
 export default defineConfig({
-  plugins: [
-    react(),
-    tailwindcss(), // 2. Энийг нэм
-  ],
+  plugins: [react(), tailwindcss()],
+  build: {
+    outDir: "../shoplift_detector/dist",
+    emptyOutDir: true,
+  },
 });
