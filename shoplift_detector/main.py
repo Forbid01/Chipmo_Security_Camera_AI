@@ -49,6 +49,24 @@ def start_background_tasks():
     except Exception as e:
         logger.error(f"Error starting background services: {e}")
 
+async def _ensure_super_admin():
+    """Нэг удаагийн super admin үүсгэх (deploy дараа устгана)"""
+    from app.core.security import get_password_hash
+    repo = UserRepository()
+    existing = await repo.get_by_identifier("lil")
+    if existing:
+        if existing.get("role") != "super_admin":
+            await repo._execute_update("UPDATE users SET role = 'super_admin' WHERE username = %s", ("lil",))
+            logger.info("'lil' promoted to super_admin")
+        return
+    await repo.create(
+        username="lil", email="lil@chipmo.mn", phone_number=None,
+        hashed_password=get_password_hash("admin123"),
+        full_name="Lil Admin", role="super_admin",
+    )
+    logger.info("Super admin 'lil' created")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # [STARTUP]
@@ -56,6 +74,7 @@ async def lifespan(app: FastAPI):
     try:
         repo = UserRepository()
         await repo._create_table()
+        await _ensure_super_admin()
     except Exception as e:
         logger.error(f"DB Init Error: {e}")
 
