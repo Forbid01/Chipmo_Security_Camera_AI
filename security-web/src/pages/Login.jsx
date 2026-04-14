@@ -167,10 +167,10 @@ export default function Login() {
           <div className="space-y-4">
             <div className="group relative">
               <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-600 group-focus-within:text-red-500/70 transition-colors" size={18} />
-              <input 
-                type="email" 
+              <input
+                type="text"
                 required
-                placeholder="Email Address" 
+                placeholder="Username or Email"
                 className="w-full bg-slate-950/60 border border-slate-800 p-4 pl-12 rounded-2xl text-white text-sm focus:outline-none focus:border-red-500/40 focus:ring-4 focus:ring-red-500/5 transition-all placeholder:text-slate-700"
                 onChange={(e) => setEmail(e.target.value)}
               />
