@@ -1,0 +1,31 @@
+version: "3.9"
+
+# Development overrides — use with:
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: builder
+    volumes:
+      - .:/app
+      - /app/__pycache__
+    environment:
+      - ENVIRONMENT=development
+      - LOG_LEVEL=debug
+    command: >
+      uvicorn shoplift_detector.main:app
+      --host 0.0.0.0
+      --port 8000
+      --reload
+      --reload-dir /app/shoplift_detector
+
+  postgres:
+    ports:
+      - "5432:5432"
+
+  redis:
+    ports:
+      - "6379:6379"

@@ -3,15 +3,42 @@ __pycache__/
 *.py[cod]
 *$py.class
 venv/
+.venv/
 .env
-.alerts
 *.pt
 *.pth
+*.egg-info/
+dist/
+build/
+
+# Alerts & faces
+.alerts
 app/static/alerts/*
 !app/static/alerts/.gitkeep
-
-.DS_Store
-
 shoplift_detector/alerts/*
 shoplift_detector/faces/*
+
+# Node
 node_modules/
+security-web/node_modules/
+
+# IDE
+.DS_Store
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Testing
+.coverage
+htmlcov/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Logs
+*.log
+app.log
+
+# Docker
+docker-compose.override.yml

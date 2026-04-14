@@ -3,7 +3,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ShieldCheck, List, Activity, Clock, Building2,
-  Settings, LogOut, LayoutDashboard, ShieldAlert, User
+  Settings, LogOut, LayoutDashboard, ShieldAlert, User, Camera
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAlerts } from '../hooks/useAlerts';
@@ -182,6 +182,13 @@ function Dashboard() {
 
           <div className="space-y-2">
             <p className="text-[10px] font-mono text-slate-500 uppercase tracking-[0.2em] px-2 mb-4 font-bold">System Control</p>
+            <button
+              onClick={() => navigate('/cameras')}
+              className="w-full flex items-center gap-4 px-4 py-3 rounded-xl text-slate-500 hover:bg-slate-800/40 transition-all font-bold"
+            >
+              <Camera size={18} />
+              <span className="text-sm">Камерууд</span>
+            </button>
             <button
               onClick={() => navigate('/settings')}
               className="w-full flex items-center gap-4 px-4 py-3 rounded-xl text-slate-500 hover:bg-slate-800/40 transition-all font-bold"

@@ -1,248 +1,143 @@
 import logging
-import psycopg2.extras
 from datetime import datetime
 from typing import List, Optional, Dict, Any
-from app.db.base import BaseDB
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import text
 
 logger = logging.getLogger(__name__)
 
-class UserRepository(BaseDB):
-    def __init__(self):
-        super().__init__()
 
-    async def _create_table(self):
-        """Өгөгдлийн сангийн хүснэгтүүдийг үүсгэх (Multi-tenant бүтэц)"""
-        queries = [
-            # 1. Байгууллагууд (Organizations)
-            """
-            CREATE TABLE IF NOT EXISTS organizations (
-                id SERIAL PRIMARY KEY,
-                name VARCHAR(100) UNIQUE NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            );
-            """,
-            # 2. Хэрэглэгчид (Users)
-            """
-            CREATE TABLE IF NOT EXISTS users (
-                id SERIAL PRIMARY KEY,
-                username VARCHAR(50) UNIQUE NOT NULL,
-                email VARCHAR(100) UNIQUE NOT NULL,
-                phone_number VARCHAR(20) UNIQUE,
-                hashed_password TEXT NOT NULL,
-                full_name VARCHAR(100),
-                role VARCHAR(20) DEFAULT 'user',
-                organization_id INTEGER REFERENCES organizations(id) ON DELETE SET NULL,
-                recovery_code VARCHAR(10),
-                recovery_code_expires TIMESTAMP,
-                is_active BOOLEAN DEFAULT TRUE,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            );
-            """,
-            # 3. Камерууд (Cameras)
-            """
-            CREATE TABLE IF NOT EXISTS cameras (
-                id SERIAL PRIMARY KEY,
-                name VARCHAR(100),
-                url TEXT NOT NULL,
-                type VARCHAR(20),
-                organization_id INTEGER REFERENCES organizations(id) ON DELETE CASCADE,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            );
-            """,
-            # 4. Индексүүд (Performance)
-            "CREATE INDEX IF NOT EXISTS idx_users_org_id ON users(organization_id);",
-            "CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);",
-            "CREATE INDEX IF NOT EXISTS idx_cameras_org_id ON cameras(organization_id);",
-        ]
-        conn = self._get_connection()
-        if not conn:
-            return
-        try:
-            with conn.cursor() as cur:
-                for q in queries:
-                    cur.execute(q)
-                conn.commit()
-        except Exception as e:
-            logger.error(f"Table Creation Error: {e}")
-        finally:
-            self._return_connection(conn)
+class UserRepository:
+    def __init__(self, db: AsyncSession):
+        self.db = db
 
-    # --- ХЭРЭГЛЭГЧИЙН ҮЙЛДЛҮҮД ---
-
-    async def create(self, username, email, phone_number, hashed_password, full_name=None, organization_id=None, role='user') -> Optional[int]:
-        query = """
-        INSERT INTO users (username, email, phone_number, hashed_password, full_name, organization_id, role)
-        VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING id;
-        """
-        params = (username, email, phone_number, hashed_password, full_name, organization_id, role)
-        return await self._execute_returning_id(query, params)
+    async def create(self, username, email, phone_number, hashed_password,
+                     full_name=None, organization_id=None, role='user') -> Optional[int]:
+        query = text("""
+            INSERT INTO users (username, email, phone_number, hashed_password, full_name, organization_id, role)
+            VALUES (:username, :email, :phone_number, :hashed_password, :full_name, :organization_id, :role)
+            RETURNING id
+        """)
+        result = await self.db.execute(query, {
+            "username": username, "email": email, "phone_number": phone_number,
+            "hashed_password": hashed_password, "full_name": full_name,
+            "organization_id": organization_id, "role": role,
+        })
+        await self.db.commit()
+        row = result.fetchone()
+        return row[0] if row else None
 
     async def get_by_identifier(self, identifier: str) -> Optional[Dict[str, Any]]:
-        query = """
-        SELECT u.*, o.name as organization_name
-        FROM users u
-        LEFT JOIN organizations o ON u.organization_id = o.id
-        WHERE (u.username = %s OR u.email = %s) AND u.is_active = TRUE
-        """
-        return await self._execute_fetch_one(query, (identifier, identifier))
+        query = text("""
+            SELECT u.*, o.name as organization_name
+            FROM users u
+            LEFT JOIN organizations o ON u.organization_id = o.id
+            WHERE (u.username = :ident OR u.email = :ident) AND u.is_active = TRUE
+        """)
+        result = await self.db.execute(query, {"ident": identifier})
+        row = result.mappings().fetchone()
+        return dict(row) if row else None
 
     async def get_by_email(self, email: str) -> Optional[Dict[str, Any]]:
-        query = "SELECT * FROM users WHERE email = %s AND is_active = TRUE"
-        return await self._execute_fetch_one(query, (email,))
-
-    # --- БАЙГУУЛЛАГА (ADMIN) ҮЙЛДЛҮҮД ---
-
-    async def create_organization(self, name: str) -> Optional[int]:
-        query = "INSERT INTO organizations (name) VALUES (%s) RETURNING id;"
-        return await self._execute_returning_id(query, (name,))
-
-    async def get_all_organizations(self) -> List[Dict[str, Any]]:
-        query = "SELECT id, name, created_at FROM organizations ORDER BY created_at DESC;"
-        return await self._execute_fetch_all(query)
-
-    async def delete_organization(self, org_id: int) -> bool:
-        """Байгууллага устгах (Камерууд нь CASCADE-ээр хамт устгагдана)"""
-        query = "DELETE FROM organizations WHERE id = %s"
-        return await self._execute_update(query, (org_id,))
-
-    # --- КАМЕРЫН ҮЙЛДЛҮҮД ---
-
-    async def add_camera(self, name, url, cam_type, org_id) -> Optional[int]:
-        query = """
-        INSERT INTO cameras (name, url, type, organization_id)
-        VALUES (%s, %s, %s, %s) RETURNING id;
-        """
-        params = (name, url, cam_type, org_id)
-        return await self._execute_returning_id(query, params)
-
-    async def get_all_cameras(self) -> List[Dict[str, Any]]:
-        """Бүх камерыг байгууллагын нэртэй нь хамт авах (Admin Dashboard-д зориулсан)"""
-        query = """
-        SELECT c.*, o.name as organization_name 
-        FROM cameras c 
-        LEFT JOIN organizations o ON c.organization_id = o.id 
-        ORDER BY c.created_at DESC;
-        """
-        return await self._execute_fetch_all(query)
-
-    async def delete_camera(self, cam_id: int) -> bool:
-        query = "DELETE FROM cameras WHERE id = %s"
-        return await self._execute_update(query, (cam_id,))
-
-    # --- ХЭРЭГЛЭГЧ УДИРДАХ (ADMIN) ---
-
-    async def get_all_users(self) -> List[Dict[str, Any]]:
-        query = """
-        SELECT u.id, u.username, u.email, u.full_name, u.role,
-               u.organization_id, o.name as organization_name, u.is_active, u.created_at
-        FROM users u
-        LEFT JOIN organizations o ON u.organization_id = o.id
-        ORDER BY u.created_at DESC;
-        """
-        return await self._execute_fetch_all(query)
+        query = text("SELECT * FROM users WHERE email = :email AND is_active = TRUE")
+        result = await self.db.execute(query, {"email": email})
+        row = result.mappings().fetchone()
+        return dict(row) if row else None
 
     async def get_user_by_id(self, user_id: int) -> Optional[Dict[str, Any]]:
-        query = "SELECT * FROM users WHERE id = %s"
-        return await self._execute_fetch_one(query, (user_id,))
+        query = text("SELECT * FROM users WHERE id = :id")
+        result = await self.db.execute(query, {"id": user_id})
+        row = result.mappings().fetchone()
+        return dict(row) if row else None
+
+    async def get_all_users(self) -> List[Dict[str, Any]]:
+        query = text("""
+            SELECT u.id, u.username, u.email, u.full_name, u.role,
+                   u.organization_id, o.name as organization_name, u.is_active, u.created_at
+            FROM users u
+            LEFT JOIN organizations o ON u.organization_id = o.id
+            ORDER BY u.created_at DESC
+        """)
+        result = await self.db.execute(query)
+        return [dict(row) for row in result.mappings().fetchall()]
 
     async def update_user_role(self, user_id: int, role: str) -> bool:
-        query = "UPDATE users SET role = %s WHERE id = %s"
-        return await self._execute_update(query, (role, user_id))
+        query = text("UPDATE users SET role = :role WHERE id = :id")
+        result = await self.db.execute(query, {"role": role, "id": user_id})
+        await self.db.commit()
+        return result.rowcount > 0
 
     async def update_user_organization(self, user_id: int, organization_id: int = None) -> bool:
-        query = "UPDATE users SET organization_id = %s WHERE id = %s"
-        return await self._execute_update(query, (organization_id, user_id))
+        query = text("UPDATE users SET organization_id = :org_id WHERE id = :id")
+        result = await self.db.execute(query, {"org_id": organization_id, "id": user_id})
+        await self.db.commit()
+        return result.rowcount > 0
 
     async def deactivate_user(self, user_id: int) -> bool:
-        query = "UPDATE users SET is_active = FALSE WHERE id = %s"
-        return await self._execute_update(query, (user_id,))
-
-    async def update_camera(self, cam_id: int, name: str, url: str, cam_type: str, org_id: int) -> bool:
-        query = "UPDATE cameras SET name = %s, url = %s, type = %s, organization_id = %s WHERE id = %s"
-        return await self._execute_update(query, (name, url, cam_type, org_id, cam_id))
-
-    async def get_stats(self) -> Dict[str, Any]:
-        query = """
-        SELECT
-            (SELECT COUNT(*) FROM users WHERE is_active = TRUE) as users,
-            (SELECT COUNT(*) FROM organizations) as organizations,
-            (SELECT COUNT(*) FROM cameras) as cameras,
-            (SELECT COUNT(*) FROM alerts) as alerts
-        """
-        result = await self._execute_fetch_one(query)
-        return dict(result) if result else {"users": 0, "organizations": 0, "cameras": 0, "alerts": 0}
-
-    # --- НУУЦ ҮГ СЭРГЭЭХ ---
+        query = text("UPDATE users SET is_active = FALSE WHERE id = :id")
+        result = await self.db.execute(query, {"id": user_id})
+        await self.db.commit()
+        return result.rowcount > 0
 
     async def update_recovery_data(self, user_id: int, code: str, expiry: datetime) -> bool:
-        query = "UPDATE users SET recovery_code = %s, recovery_code_expires = %s WHERE id = %s"
-        return await self._execute_update(query, (code, expiry, user_id))
+        query = text("UPDATE users SET recovery_code = :code, recovery_code_expires = :expiry WHERE id = :id")
+        result = await self.db.execute(query, {"code": code, "expiry": expiry, "id": user_id})
+        await self.db.commit()
+        return result.rowcount > 0
 
     async def clear_recovery_data(self, user_id: int) -> bool:
-        query = "UPDATE users SET recovery_code = NULL, recovery_code_expires = NULL WHERE id = %s"
-        return await self._execute_update(query, (user_id,))
+        query = text("UPDATE users SET recovery_code = NULL, recovery_code_expires = NULL WHERE id = :id")
+        result = await self.db.execute(query, {"id": user_id})
+        await self.db.commit()
+        return result.rowcount > 0
 
     async def update_password(self, user_id: int, new_hashed_password: str) -> bool:
-        query = "UPDATE users SET hashed_password = %s WHERE id = %s"
-        return await self._execute_update(query, (new_hashed_password, user_id))
+        query = text("UPDATE users SET hashed_password = :pwd WHERE id = :id")
+        result = await self.db.execute(query, {"pwd": new_hashed_password, "id": user_id})
+        await self.db.commit()
+        return result.rowcount > 0
 
-    # --- ӨГӨГДЛИЙН САНГИЙН ТУСЛАХ ФУНКЦҮҮД (HELPERS) ---
+    # --- Organizations ---
 
-    async def _execute_returning_id(self, query, params) -> Optional[int]:
-        conn = self._get_connection()
-        if not conn:
-            return None
-        try:
-            with conn.cursor() as cur:
-                cur.execute(query, params)
-                result = cur.fetchone()
-                conn.commit()
-                return result[0] if result else None
-        except Exception as e:
-            logger.error(f"Database Insert Error: {e}")
-            return None
-        finally:
-            self._return_connection(conn)
+    async def create_organization(self, name: str) -> Optional[int]:
+        query = text("INSERT INTO organizations (name) VALUES (:name) RETURNING id")
+        result = await self.db.execute(query, {"name": name})
+        await self.db.commit()
+        row = result.fetchone()
+        return row[0] if row else None
 
-    async def _execute_fetch_one(self, query, params=None) -> Optional[Dict[str, Any]]:
-        conn = self._get_connection()
-        if not conn:
-            return None
-        try:
-            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-                cur.execute(query, params)
-                return cur.fetchone()
-        except Exception as e:
-            logger.error(f"Database Fetch Error: {e}")
-            return None
-        finally:
-            self._return_connection(conn)
+    async def get_all_organizations(self) -> List[Dict[str, Any]]:
+        query = text("SELECT id, name, created_at FROM organizations ORDER BY created_at DESC")
+        result = await self.db.execute(query)
+        return [dict(row) for row in result.mappings().fetchall()]
 
-    async def _execute_fetch_all(self, query, params=None) -> List[Dict[str, Any]]:
-        conn = self._get_connection()
-        if not conn:
-            return []
-        try:
-            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-                cur.execute(query, params)
-                return cur.fetchall()
-        except Exception as e:
-            logger.error(f"Database Fetch List Error: {e}")
-            return []
-        finally:
-            self._return_connection(conn)
+    async def delete_organization(self, org_id: int) -> bool:
+        query = text("DELETE FROM organizations WHERE id = :id")
+        result = await self.db.execute(query, {"id": org_id})
+        await self.db.commit()
+        return result.rowcount > 0
 
-    async def _execute_update(self, query, params) -> bool:
-        conn = self._get_connection()
-        if not conn:
-            return False
-        try:
-            with conn.cursor() as cur:
-                cur.execute(query, params)
-                conn.commit()
-                return True
-        except Exception as e:
-            logger.error(f"Database Update Error: {e}")
-            return False
-        finally:
-            self._return_connection(conn)
+    # --- Cameras (legacy compat) ---
+
+    async def get_all_cameras(self) -> List[Dict[str, Any]]:
+        query = text("""
+            SELECT c.*, o.name as organization_name, s.name as store_name
+            FROM cameras c
+            LEFT JOIN organizations o ON c.organization_id = o.id
+            LEFT JOIN stores s ON c.store_id = s.id
+            ORDER BY c.created_at DESC
+        """)
+        result = await self.db.execute(query)
+        return [dict(row) for row in result.mappings().fetchall()]
+
+    async def get_stats(self) -> Dict[str, Any]:
+        query = text("""
+            SELECT
+                (SELECT COUNT(*) FROM users WHERE is_active = TRUE) as users,
+                (SELECT COUNT(*) FROM organizations) as organizations,
+                (SELECT COUNT(*) FROM cameras) as cameras,
+                (SELECT COUNT(*) FROM alerts) as alerts
+        """)
+        result = await self.db.execute(query)
+        row = result.mappings().fetchone()
+        return dict(row) if row else {"users": 0, "organizations": 0, "cameras": 0, "alerts": 0}

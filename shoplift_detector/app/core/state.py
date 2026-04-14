@@ -1,3 +1,6 @@
+"""Global state - backward compatibility layer.
+New code should use camera_manager instead."""
+
 import queue
 import threading
 from collections import deque
@@ -36,7 +39,7 @@ def clear_all_queues():
                 break
 
 
-def safe_update_display_queue(frame, source: str = "Mac-Camera"):  # ← source нэмэгдсэн
+def safe_update_display_queue(frame, source: str = "Mac-Camera"):
     global latest_mac_frame, latest_phone_frame, latest_axis_frame
 
     if frame is None:

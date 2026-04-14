@@ -1,9 +1,11 @@
 # --- Core Framework ---
-fastapi
-uvicorn
+fastapi>=0.110.0
+uvicorn[standard]
 python-multipart
 python-dotenv
 slowapi
+pydantic[email]>=2.0
+pydantic-settings>=2.0
 
 # --- AI & Computer Vision ---
 ultralytics
@@ -15,19 +17,32 @@ lap>=0.5.12
 onnx
 onnxruntime
 
-# --- Database & Auth ---
+# --- Database ---
+sqlalchemy[asyncio]>=2.0
+asyncpg
+alembic
 psycopg2-binary
+
+# --- Auth & Security ---
 passlib[bcrypt]==1.7.4
 bcrypt==4.0.1
 PyJWT==2.8.0
 python-jose[cryptography]
-email-validator
 
 # --- Networking & HTTP ---
-httpx==0.24.0
+httpx>=0.25.0
+
+# --- Logging & Monitoring ---
+structlog>=24.0
+sentry-sdk[fastapi]
 
 # --- Testing ---
 pytest
 pytest-asyncio
 pytest-cov
 pytest-mock
+httpx
+
+# --- Code Quality ---
+ruff
+mypy

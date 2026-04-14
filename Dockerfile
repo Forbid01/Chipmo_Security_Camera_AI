@@ -16,6 +16,7 @@ RUN apt-get update && apt-get install -y \
     libglib2.0-0 \
     libstdc++6 \
     ffmpeg \
+    libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -27,4 +28,4 @@ COPY . .
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')" || exit 1
 
-CMD ["python", "shoplift_detector/main.py"]
+CMD ["sh", "-c", "alembic upgrade head && uvicorn shoplift_detector.main:app --host 0.0.0.0 --port 8000"]

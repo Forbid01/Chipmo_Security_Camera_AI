@@ -1,22 +1,24 @@
 import './App.css';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import ErrorBoundary from './components/ErrorBoundary';
 import Landing from './pages/Landing';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
 import DashboardAdmin from './pages/DashboardAdmin';
 import Settings from './pages/Settings';
+import MyCameras from './pages/MyCameras';
 import ForgotPassword from './pages/ForgetPassword';
 
 function App() {
   const token = localStorage.getItem('token');
   const isAuthenticated = !!token;
-  
-  // 2. Хэрэглэгчийн эрхийг шалгах (localStorage-д user мэдээлэл хадгалсан гэж үзэв)
+
   const user = JSON.parse(localStorage.getItem('user') || '{}');
   const isSuperAdmin = user.role === 'super_admin';
 
   return (
+    <ErrorBoundary>
     <Router>
       <Routes>
         <Route path="/" element={<Landing />} />
@@ -48,6 +50,12 @@ function App() {
           element={isAuthenticated ? <Settings /> : <Navigate to="/login" />}
         />
 
+        {/* Камерууд хуудас */}
+        <Route
+          path="/cameras"
+          element={isAuthenticated ? <MyCameras /> : <Navigate to="/login" />}
+        />
+
         {/* 3. SUPER ADMIN CONTROL PANEL (Хамгаалалттай) */}
         <Route 
           path="/admin/control" 
@@ -61,6 +69,7 @@ function App() {
         <Route path="*" element={<Navigate to="/" />} />
       </Routes>
     </Router>
+    </ErrorBoundary>
   );
 }
 

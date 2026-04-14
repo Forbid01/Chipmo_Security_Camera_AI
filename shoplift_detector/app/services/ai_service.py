@@ -16,32 +16,28 @@ logger = logging.getLogger(__name__)
 
 try:
     from app.core.config import ALERTS_DIR
-    from app.core.state import (
-        ai_input_queue, alert_queue, video_buffer, buffer_lock,
-        safe_update_display_queue
-    )
-    from app.db.repository.alerts import AlertRepository
+    from app.services.camera_manager import camera_manager
+    from app.services.auto_learner import auto_learner
 except ImportError:
     logger.error("app.core модулиуд олдохгүй байна.")
 
 STALE_TRACK_FRAMES  = 150
 SCORE_DECAY         = 0.98
-ALERT_COOLDOWN      = 15
-SCORE_ALERT_TRIGGER = 80  # ← Өндөр байх тусам алдаа бага
 
-# --- Оноо өгөх систем ---
-SCORE_LOOKING_AROUND   = 1.5   # Орчноо эргэн харах
-SCORE_ITEM_PICKUP      = 15.0  # Барааг гараар хүрэх
-SCORE_BODY_BLOCK       = 3.0   # Биеэр бараагаа далдлах
-SCORE_CROUCH           = 1.0   # Бөхийх (далдлах зорилгоор)
-SCORE_WRIST_TO_TORSO   = 5.0   # Гарыг биеийн дотогш татах
-SCORE_RAPID_MOVEMENT   = 1.5   # Гарын хурдан хөдөлгөөн
+# Default score weights (auto-learner can override per store)
+DEFAULT_WEIGHTS = {
+    "looking_around": 1.5,
+    "item_pickup": 15.0,
+    "body_block": 3.0,
+    "crouch": 1.0,
+    "wrist_to_torso": 5.0,
+    "rapid_movement": 1.5,
+}
 
 
 class ShopliftDetector:
     def __init__(self, device_type: str):
         self.device = device_type
-        self.alert_db = AlertRepository()
         self.executor = ThreadPoolExecutor(max_workers=4)
 
         self.pose_model = YOLO("yolo11m-pose.pt").to(self.device)
@@ -51,6 +47,16 @@ class ShopliftDetector:
         self.last_alert_time: dict = {}
         self.frame_count = 0
         self._cached_expensive_items: list = []
+
+    def _get_weights(self, store_id: int) -> dict:
+        """Дэлгүүрт тохирсон score weights авах (auto-learned)."""
+        config = auto_learner.get_store_config(store_id)
+        return config.get("weights", DEFAULT_WEIGHTS)
+
+    def _get_threshold(self, store_id: int, default: float = 80.0) -> float:
+        """Дэлгүүрт тохирсон threshold авах (auto-learned)."""
+        config = auto_learner.get_store_config(store_id)
+        return config.get("threshold", default)
 
     def _optimize_video(self, video_path: str):
         temp_path = video_path.replace(".mp4", "_temp.mp4")
@@ -64,9 +70,11 @@ class ShopliftDetector:
             subprocess.run(cmd, check=True, capture_output=True)
             os.replace(temp_path, video_path)
         except Exception as e:
-            logger.error(f"FFmpeg Алдаа: {e}")
+            logger.error(f"FFmpeg error: {e}")
 
-    def _async_save_alert(self, yolo_id, frame_to_save, name: str, reason: str, bbox: list):
+    def _async_save_alert(self, yolo_id, frame_to_save, name: str, reason: str,
+                          bbox: list, camera_id: int = None, store_id: int = None,
+                          score: float = None):
         try:
             current_time = int(time.time())
             base_filename = f"alert_{yolo_id}_{current_time}"
@@ -75,29 +83,42 @@ class ShopliftDetector:
 
             cv2.imwrite(img_path, frame_to_save)
 
-            with buffer_lock:
-                frames_snapshot = list(video_buffer)
+            # Save alert to DB (async via new session)
+            import asyncio
+            loop = asyncio.new_event_loop()
+            try:
+                loop.run_until_complete(
+                    self._save_alert_to_db(
+                        person_id=int(yolo_id), image_path=img_path,
+                        reason=reason, camera_id=camera_id, store_id=store_id,
+                        score=score,
+                    )
+                )
+            finally:
+                loop.close()
 
-            if frames_snapshot:
-                height, width, _ = frames_snapshot[0].shape
-                fourcc = cv2.VideoWriter_fourcc(*"avc1")
-                out = cv2.VideoWriter(video_path, fourcc, 20.0, (width, height))
-                for f in frames_snapshot:
-                    out.write(f)
-                out.release()
-                self._optimize_video(video_path)
-
-            self.alert_db.insert_alert(
-                person_id=int(yolo_id), image_path=img_path, reason=reason, organization_id=None
-            )
+            # Queue for Telegram notification
+            from app.core.state import alert_queue
             alert_queue.put({
                 "id": yolo_id,
-                "video_url": f"/static/alerts/{base_filename}.mp4",
                 "img": img_path, "reason": reason, "name": name,
                 "frame": frame_to_save, "bbox": bbox,
+                "camera_id": camera_id, "store_id": store_id,
             })
         except Exception as e:
-            logger.error(f"Alert Хадгалах алдаа: {e}")
+            logger.error(f"Alert save error: {e}")
+
+    async def _save_alert_to_db(self, person_id, image_path, reason,
+                                 camera_id=None, store_id=None, score=None):
+        from app.db.session import AsyncSessionLocal
+        from app.db.repository.alerts import AlertRepository
+
+        async with AsyncSessionLocal() as db:
+            repo = AlertRepository(db)
+            await repo.insert_alert(
+                person_id=person_id, image_path=image_path, reason=reason,
+                camera_id=camera_id, store_id=store_id, confidence_score=score,
+            )
 
     @staticmethod
     def _keypoint_valid(kp) -> bool:
@@ -112,11 +133,8 @@ class ShopliftDetector:
             del self.tracker_history[tid]
             self.last_alert_time.pop(tid, None)
 
-    def _analyze_behavior(self, curr: dict, kps, person_h: float, expensive_items: list):
-        """
-        Хүний keypoint-уудаас сэжигтэй үйлдлийг шинжлэх.
-        Буцаах утга: (нэмэгдэх оноо, шалтгааны жагсаалт)
-        """
+    def _analyze_behavior(self, curr: dict, kps, person_h: float,
+                          expensive_items: list, weights: dict):
         score_delta = 0.0
         reasons = []
 
@@ -137,30 +155,27 @@ class ShopliftDetector:
         l_knee     = kps[13]
         r_knee     = kps[14]
 
-        # Мөрний төв
         shoulder_cx = None
         if self._keypoint_valid(l_shoulder) and self._keypoint_valid(r_shoulder):
             shoulder_cx = (l_shoulder[0] + r_shoulder[0]) / 2
             shoulder_cy = (l_shoulder[1] + r_shoulder[1]) / 2
-        
-        # Нүүрний төв
+
         face_cx = None
         if self._keypoint_valid(l_eye) and self._keypoint_valid(r_eye):
             face_cx = (l_eye[0] + r_eye[0]) / 2
 
-        # Дундаж хип
         hip_cy = None
         if self._keypoint_valid(l_hip) and self._keypoint_valid(r_hip):
             hip_cy = (l_hip[1] + r_hip[1]) / 2
 
-        # ① Орчноо эргэн харах — толгой мөрнөөс хажуу тийш хазайсан
+        # 1. Looking around
         if face_cx is not None and shoulder_cx is not None:
             offset = abs(face_cx - shoulder_cx)
             if offset > person_h * 0.15:
-                score_delta += SCORE_LOOKING_AROUND
-                reasons.append(" Орчноо харах")
+                score_delta += weights.get("looking_around", 1.5)
+                reasons.append("Орчноо харах")
 
-        # ② Гар барааны хайрцагт хүрэх
+        # 2. Item pickup
         for wrist in [l_wrist, r_wrist]:
             if not self._keypoint_valid(wrist):
                 continue
@@ -169,50 +184,47 @@ class ShopliftDetector:
                     ix1, iy1, ix2, iy2 = item["box"]
                     if ix1 < wrist[0] < ix2 and iy1 < wrist[1] < iy2:
                         curr["holding"] = item["label"]
-                        score_delta += SCORE_ITEM_PICKUP
-                        reasons.append(f" {item['label']} авах")
+                        score_delta += weights.get("item_pickup", 15.0)
+                        reasons.append(f"{item['label']} авах")
                         break
 
-        # ③ Биеэр бараагаа далдлах — мөрний өргөн агшсан (камер руу эргэсэн)
+        # 3. Body block
         if self._keypoint_valid(l_shoulder) and self._keypoint_valid(r_shoulder):
             shoulder_width = abs(r_shoulder[0] - l_shoulder[0])
-            # Хэвийн өргөн person_h * 0.4 орчим байдаг
-            # Камер руу эргэхэд өргөн агших
             if curr.get("avg_shoulder_w") is None:
                 curr["avg_shoulder_w"] = shoulder_width
             else:
                 curr["avg_shoulder_w"] = curr["avg_shoulder_w"] * 0.9 + shoulder_width * 0.1
                 if shoulder_width < curr["avg_shoulder_w"] * 0.55:
-                    score_delta += SCORE_BODY_BLOCK
-                    reasons.append(" Биеэр далдлах")
+                    score_delta += weights.get("body_block", 3.0)
+                    reasons.append("Биеэр далдлах")
 
-        # ④ Бөхийх — хип мөрний доор хэт ойртсон (өндрийн 30%-иас бага зай)
+        # 4. Crouch
         if hip_cy is not None and shoulder_cx is not None:
             torso_h = abs(hip_cy - l_shoulder[1])
             if torso_h < person_h * 0.15:
                 if curr["holding"]:
                     score_delta += 5.0
-                    reasons.append(" Бөхийж бараа нуух")
+                    reasons.append("Бөхийж бараа нуух")
                 else:
-                    score_delta += SCORE_CROUCH
-                    reasons.append(" Бөхийх")
+                    score_delta += weights.get("crouch", 1.0)
+                    reasons.append("Бөхийх")
 
-        # ⑤ Гарыг биеийн дотогш татах — holding үед гарыг хип-ийн ойролцоо татах
+        # 5. Wrist to torso
         if curr["holding"] and hip_cy is not None:
             for wrist in [l_wrist, r_wrist]:
                 if not self._keypoint_valid(wrist):
                     continue
-                # Гар хип-ийн ойролцоо + биений дотор талд байвал нуусан гэж үзнэ
                 wrist_to_hip = abs(wrist[1] - hip_cy)
                 if wrist_to_hip < person_h * 0.15:
                     curr["concealment_frames"] += 1
                     if curr["concealment_frames"] % 8 == 0:
-                        score_delta += SCORE_WRIST_TO_TORSO
-                        reasons.append(f" Хувцас доор нуух ({curr['concealment_frames']}f)")
+                        score_delta += weights.get("wrist_to_torso", 5.0)
+                        reasons.append(f"Хувцас доор нуух ({curr['concealment_frames']}f)")
                 else:
                     curr["concealment_frames"] = max(0, curr["concealment_frames"] - 1)
 
-        # ⑥ Гарын хурдан хөдөлгөөн — holding үед гар огцом хөдөлсөн
+        # 6. Rapid movement
         if curr["holding"]:
             for wrist, key in [(l_wrist, "prev_l_wrist"), (r_wrist, "prev_r_wrist")]:
                 if not self._keypoint_valid(wrist):
@@ -220,45 +232,42 @@ class ShopliftDetector:
                 prev = curr.get(key)
                 if prev is not None:
                     speed = math.dist(wrist, prev)
-                    # Хэвийн хөдөлгөөн person_h * 0.05-аас бага
                     if speed > person_h * 0.08:
-                        score_delta += SCORE_RAPID_MOVEMENT
+                        score_delta += weights.get("rapid_movement", 1.5)
                         reasons.append("Хурдан хөдөлгөөн")
                 curr[key] = tuple(wrist)
 
         return score_delta, reasons
+
     def run_inference(self):
-        frame_counters = {
-                "Mac-Camera": 0,
-                "Axis-Camera": 0,
-        }
-        last_display_frames = {
-            "Mac-Camera": None,
-            "Axis-Camera": None,
-        }
+        ai_queue = camera_manager.ai_input_queue
+        frame_counters = {}
 
         while True:
             try:
-                data = ai_input_queue.get(timeout=2)
+                data = ai_queue.get(timeout=2)
                 frame = data["frame"]
-                source_name = data["source"]
+                source_name = data.get("source", "Unknown")
+                camera_id = data.get("camera_id")
+                store_id = data.get("store_id", 0)
+                threshold = data.get("threshold", 80.0)
+                cooldown = data.get("cooldown", 15)
             except (queue.Empty, TypeError, KeyError):
                 continue
-            
+
             frame_counters[source_name] = frame_counters.get(source_name, 0) + 1
             frame_idx = frame_counters[source_name]
 
             if frame_idx % 2 != 0:
-                prev = last_display_frames.get(source_name)
-                safe_update_display_queue(
-                    prev if prev is not None else frame,
-                    source=source_name
-                )
                 continue
 
             display_frame = frame.copy()
             current_time  = time.time()
             self.frame_count += 1
+
+            # Get per-store weights and threshold (auto-learned)
+            weights = self._get_weights(store_id)
+            effective_threshold = self._get_threshold(store_id, threshold)
 
             if self.frame_count % 50 == 0:
                 self._cleanup_stale_tracks()
@@ -312,20 +321,21 @@ class ShopliftDetector:
                         curr["score"] = max(0.0, curr["score"] * 0.999)
 
                     delta, reasons = self._analyze_behavior(
-                        curr, keypoints[i], person_h, expensive_items
+                        curr, keypoints[i], person_h, expensive_items, weights
                     )
                     curr["score"] += delta
                     if reasons:
                         curr["last_reasons"] = reasons
 
-                    if curr["score"] >= SCORE_ALERT_TRIGGER:
+                    if curr["score"] >= effective_threshold:
                         last_alert = self.last_alert_time.get(yolo_id, 0)
-                        if current_time - last_alert > ALERT_COOLDOWN:
+                        if current_time - last_alert > cooldown:
                             reason_str = " | ".join(curr["last_reasons"])
                             self.executor.submit(
                                 self._async_save_alert,
                                 yolo_id, display_frame.copy(),
-                                "Unknown", f"🚨 {reason_str}", [x1, y1, x2, y2]
+                                "Unknown", f"🚨 {reason_str}", [x1, y1, x2, y2],
+                                camera_id, store_id, curr["score"],
                             )
                             self.last_alert_time[yolo_id] = current_time
                             curr["score"] = 0.0
@@ -366,14 +376,19 @@ class ShopliftDetector:
                             cv2.FONT_HERSHEY_SIMPLEX, 0.4, border_color, 1, cv2.LINE_AA
                         )
 
-            last_display_frames[source_name] = display_frame
-            safe_update_display_queue(display_frame, source=source_name)
+            # Update camera manager with display frame
+            if camera_id:
+                state = camera_manager._cameras.get(camera_id)
+                if state:
+                    state.latest_frame = display_frame
+
+
 def ai_inference():
     device = (
         "mps" if torch.backends.mps.is_available()
         else "cuda" if torch.cuda.is_available()
         else "cpu"
     )
-    logger.info(f"AI Төхөөрөмж: {device}")
+    logger.info(f"AI Device: {device}")
     detector = ShopliftDetector(device_type=device)
     detector.run_inference()

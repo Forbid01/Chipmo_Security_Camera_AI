@@ -2,16 +2,25 @@ import axios from "axios";
 
 export const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL || "https://chipmosecuritycameraai-production.up.railway.app";
+
+// Legacy video URLs (backward compat)
 export const VIDEO_FEED_URL = `${API_BASE_URL}/video_feed`;
 export const getVideoFeedUrl = (cameraId) =>
   cameraId ? `${API_BASE_URL}/video_feed/${cameraId}` : VIDEO_FEED_URL;
 
-// 1. Axios instance үүсгэх
+// New v2 video URLs (authenticated)
+export const getVideoFeedUrlV2 = (cameraId) =>
+  `${API_BASE_URL}/api/v1/video/feed/${cameraId}`;
+export const getStoreVideoUrl = (storeId) =>
+  `${API_BASE_URL}/api/v1/video/store/${storeId}`;
+
+// Axios instance
 export const api = axios.create({
   baseURL: API_BASE_URL,
+  withCredentials: true, // httpOnly cookie support
 });
 
-// Request interceptor: Хүсэлт болгонд Токен автоматаар хавсаргана
+// Request interceptor: Attach token from localStorage (fallback for API clients)
 api.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem("token");
@@ -23,26 +32,57 @@ api.interceptors.request.use(
   (error) => Promise.reject(error),
 );
 
-// --- НЭВТРЭХ БОЛОН БҮРТГЭЛ ---
+// Response interceptor: Handle 401 globally
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      localStorage.removeItem("token");
+      localStorage.removeItem("user");
+      // Redirect to login if not already there
+      if (window.location.pathname !== "/" && window.location.pathname !== "/login") {
+        window.location.href = "/login";
+      }
+    }
+    return Promise.reject(error);
+  },
+);
+
+// ============================================
+// AUTH
+// ============================================
 
 export const loginUser = async (username, password) => {
   const formData = new FormData();
   formData.append("username", username);
   formData.append("password", password);
-
-  // FastAPI OAuth2PasswordRequestForm-д FormData хэрэгтэй байдаг
   const response = await api.post("/token", formData);
   return response.data;
 };
 
-// --- ХЭРЭГЛЭГЧИЙН МЭДЭЭЛЭЛ ---
+export const registerUser = async (userData) => {
+  const response = await api.post("/register", userData);
+  return response.data;
+};
+
+export const logoutUser = async () => {
+  try {
+    await api.post("/api/v1/auth/logout");
+  } catch (e) {
+    // Ignore errors on logout
+  }
+  localStorage.removeItem("token");
+  localStorage.removeItem("user");
+};
 
 export const getUserProfile = async () => {
   const response = await api.get("/users/me");
   return response.data;
 };
 
-// --- НУУЦ ҮГ СЭРГЭЭХ (AUTH) ---
+// ============================================
+// PASSWORD RECOVERY
+// ============================================
 
 export const forgotPassword = async (email) => {
   const response = await api.post("/forgot-password", { email });
@@ -56,16 +96,40 @@ export const verifyCode = async (email, code) => {
 
 export const resetPassword = async (email, code, newPassword) => {
   const response = await api.post("/reset-password", {
-    email: email,
-    code: code,
-    new_password: newPassword,
+    email, code, new_password: newPassword,
   });
   return response.data;
 };
 
-// --- АДМИН ХЯНАЛТ (ORGANIZATIONS & CAMERAS) ---
+// ============================================
+// STORES (NEW)
+// ============================================
 
-// Байгууллагууд
+export const getStores = async (organizationId = null) => {
+  const params = organizationId ? { organization_id: organizationId } : {};
+  const response = await api.get("/api/v1/stores", { params });
+  return response.data;
+};
+
+export const createStore = async (storeData) => {
+  const response = await api.post("/api/v1/stores", storeData);
+  return response.data;
+};
+
+export const updateStore = async (id, data) => {
+  const response = await api.put(`/api/v1/stores/${id}`, data);
+  return response.data;
+};
+
+export const deleteStore = async (id) => {
+  const response = await api.delete(`/api/v1/stores/${id}`);
+  return response.data;
+};
+
+// ============================================
+// ADMIN - ORGANIZATIONS
+// ============================================
+
 export const getOrganizations = async () => {
   const response = await api.get("/admin/organizations");
   return response.data;
@@ -81,9 +145,13 @@ export const deleteOrganization = async (id) => {
   return response.data;
 };
 
-// Камерууд
-export const getCameras = async () => {
-  const response = await api.get("/admin/cameras");
+// ============================================
+// ADMIN - CAMERAS
+// ============================================
+
+export const getCameras = async (storeId = null) => {
+  const params = storeId ? { store_id: storeId } : {};
+  const response = await api.get("/admin/cameras", { params });
   return response.data;
 };
 
@@ -92,19 +160,25 @@ export const addCamera = async (cameraData) => {
   return response.data;
 };
 
-export const deleteCamera = async (id) => {
-  const response = await api.delete(`/admin/cameras/${id}`);
-  return response.data;
-};
-
 export const updateCamera = async (id, data) => {
   const response = await api.put(`/admin/cameras/${id}`, data);
   return response.data;
 };
 
-// --- ADMIN PANEL (USERS, STATS, ALERTS) ---
+export const deleteCamera = async (id) => {
+  const response = await api.delete(`/admin/cameras/${id}`);
+  return response.data;
+};
 
-// Хэрэглэгч удирдах
+export const getCameraStatus = async () => {
+  const response = await api.get("/api/v1/cameras/status");
+  return response.data;
+};
+
+// ============================================
+// ADMIN - USERS
+// ============================================
+
 export const getUsers = async () => {
   const response = await api.get("/admin/users");
   return response.data;
@@ -116,7 +190,9 @@ export const updateUserRole = async (id, role) => {
 };
 
 export const updateUserOrganization = async (id, organizationId) => {
-  const response = await api.put(`/admin/users/${id}/organization`, { organization_id: organizationId });
+  const response = await api.put(`/admin/users/${id}/organization`, {
+    organization_id: organizationId,
+  });
   return response.data;
 };
 
@@ -125,13 +201,19 @@ export const deleteUser = async (id) => {
   return response.data;
 };
 
-// Статистик
+// ============================================
+// ADMIN - STATS
+// ============================================
+
 export const getAdminStats = async () => {
   const response = await api.get("/admin/stats");
   return response.data;
 };
 
-// Alert удирдах
+// ============================================
+// ALERTS
+// ============================================
+
 export const getAdminAlerts = async (params = {}) => {
   const response = await api.get("/admin/alerts", { params });
   return response.data;
@@ -144,6 +226,69 @@ export const markAlertReviewed = async (id) => {
 
 export const deleteAlert = async (id) => {
   const response = await api.delete(`/admin/alerts/${id}`);
+  return response.data;
+};
+
+// ============================================
+// MY CAMERAS (User-level camera management)
+// ============================================
+
+export const getMyCameras = async () => {
+  const response = await api.get("/api/v1/my/cameras");
+  return response.data;
+};
+
+export const getMyStores = async () => {
+  const response = await api.get("/api/v1/my/cameras/stores");
+  return response.data;
+};
+
+export const addMyCamera = async (cameraData) => {
+  const response = await api.post("/api/v1/my/cameras", cameraData);
+  return response.data;
+};
+
+export const updateMyCamera = async (id, data) => {
+  const response = await api.put(`/api/v1/my/cameras/${id}`, data);
+  return response.data;
+};
+
+export const deleteMyCamera = async (id) => {
+  const response = await api.delete(`/api/v1/my/cameras/${id}`);
+  return response.data;
+};
+
+// ============================================
+// AI FEEDBACK & AUTO-LEARNING (NEW)
+// ============================================
+
+export const submitAlertFeedback = async (alertId, feedbackType, notes = null) => {
+  const response = await api.post("/api/v1/feedback", {
+    alert_id: alertId,
+    feedback_type: feedbackType, // "true_positive" | "false_positive"
+    notes,
+  });
+  return response.data;
+};
+
+export const getFeedbackStats = async (storeId = null) => {
+  const params = storeId ? { store_id: storeId } : {};
+  const response = await api.get("/api/v1/feedback/stats", { params });
+  return response.data;
+};
+
+export const getLearningStatus = async (storeId = null) => {
+  const params = storeId ? { store_id: storeId } : {};
+  const response = await api.get("/api/v1/feedback/learning-status", { params });
+  return response.data;
+};
+
+// ============================================
+// CONTACT
+// ============================================
+
+export const sendContactForm = async (formData) => {
+  const response = await api.post("/api/contact", formData);
   return response.data;
 };
 
