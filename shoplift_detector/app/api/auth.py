@@ -67,16 +67,15 @@ async def register(user_data: UserCreate):
 @limiter.limit("10/minute")
 async def login(request: Request, form_data: OAuth2PasswordRequestForm = Depends()):
     """Нэвтрэх болон JWT Токен авах"""
-    user = AuthService.authenticate_user(form_data.username, form_data.password)
+    user = await AuthService.authenticate_user(form_data.username, form_data.password)
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Нэвтрэх нэр эсвэл нууц үг буруу байна",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    
-    # Payload-д хэрэглэгчийн эрх болон байгууллагыг багцална
-    access_token = AuthService.create_access_token(
+
+    access_token = await AuthService.create_access_token(
         data={
             "sub": user["username"],
             "org_id": user.get("organization_id"),
@@ -85,12 +84,14 @@ async def login(request: Request, form_data: OAuth2PasswordRequestForm = Depends
     )
     
     return {
-        "access_token": access_token, 
+        "access_token": access_token,
         "token_type": "bearer",
         "user": {
             "username": user["username"],
+            "full_name": user.get("full_name"),
             "role": user.get("role", "user"),
-            "org_id": user.get("organization_id")
+            "org_id": user.get("organization_id"),
+            "org_name": user.get("organization_name"),
         }
     }
 
@@ -110,7 +111,7 @@ async def forgot_password(request: Request, data: ForgotPasswordRequest):
 @router.post("/verify-code")
 @limiter.limit("5/minute")
 async def verify_code(request: Request, data: VerifyCodeRequest):
-    is_valid = AuthService.verify_recovery_code(data.email, data.code)
+    is_valid = await AuthService.verify_recovery_code(data.email, data.code)
     if not is_valid:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -121,7 +122,7 @@ async def verify_code(request: Request, data: VerifyCodeRequest):
 @router.post("/reset-password")
 @limiter.limit("5/minute")
 async def reset_password(request: Request, data: ResetPasswordRequest):
-    success = AuthService.reset_password(data.email, data.code, data.new_password)
+    success = await AuthService.reset_password(data.email, data.code, data.new_password)
     if not success:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -149,7 +150,7 @@ async def create_org(
     if current_user.get("role") != "super_admin":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Танд байгууллага нэмэх эрх байхгүй!")
     
-    org_id = AuthService.create_organization(org_data.name)
+    org_id = await AuthService.create_organization(org_data.name)
     return {"message": "Байгууллага нэмэгдлээ", "org_id": org_id}
 
 @router.delete("/admin/organizations/{org_id}")
@@ -184,7 +185,7 @@ async def add_camera_to_org(
     if current_user.get("role") != "super_admin":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Танд камер нэмэх эрх байхгүй!")
     
-    cam_id = AuthService.add_camera(
+    cam_id = await AuthService.add_camera(
         name=cam_data.name,
         url=cam_data.url,
         cam_type=cam_data.type,

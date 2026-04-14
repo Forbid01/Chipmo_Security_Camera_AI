@@ -4,7 +4,8 @@ import Landing from './pages/Landing';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
-import DashboardAdmin from './pages/DashboardAdmin'; // 1. Шинэ хуудсаа импортлох
+import DashboardAdmin from './pages/DashboardAdmin';
+import Settings from './pages/Settings';
 import ForgotPassword from './pages/ForgetPassword';
 
 function App() {
@@ -36,9 +37,15 @@ function App() {
         />
 
         {/* Энгийн хэрэглэгчийн Dashboard */}
-        <Route 
-          path="/dashboard" 
-          element={isAuthenticated ? <Dashboard /> : <Navigate to="/login" />} 
+        <Route
+          path="/dashboard"
+          element={isAuthenticated ? <Dashboard /> : <Navigate to="/login" />}
+        />
+
+        {/* Тохиргоо хуудас */}
+        <Route
+          path="/settings"
+          element={isAuthenticated ? <Settings /> : <Navigate to="/login" />}
         />
 
         {/* 3. SUPER ADMIN CONTROL PANEL (Хамгаалалттай) */}

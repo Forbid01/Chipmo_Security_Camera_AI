@@ -35,6 +35,13 @@ export const loginUser = async (username, password) => {
   return response.data;
 };
 
+// --- ХЭРЭГЛЭГЧИЙН МЭДЭЭЛЭЛ ---
+
+export const getUserProfile = async () => {
+  const response = await api.get("/users/me");
+  return response.data;
+};
+
 // --- НУУЦ ҮГ СЭРГЭЭХ (AUTH) ---
 
 export const forgotPassword = async (email) => {

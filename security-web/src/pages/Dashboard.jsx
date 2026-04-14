@@ -1,8 +1,9 @@
 /* eslint-disable no-unused-vars */
-import React, { useState, useMemo } from 'react';
-import { 
-  ShieldCheck, List, Activity, Clock, Building2, 
-  Settings, LogOut, LayoutDashboard, ShieldAlert 
+import React, { useState, useMemo, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import {
+  ShieldCheck, List, Activity, Clock, Building2,
+  Settings, LogOut, LayoutDashboard, ShieldAlert, User
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAlerts } from '../hooks/useAlerts';
@@ -10,16 +11,30 @@ import { WeeklyChart } from '../components/Analytics/WeeklyChart';
 import { HourlyChart } from '../components/Analytics/HourlyChart';
 import { AlertCard } from '../components/Logs/AlertCard';
 import { VideoModal } from '../components/Monitoring/VideoModal';
-import { getVideoFeedUrl } from '../services/api';
+import { getVideoFeedUrl, getUserProfile } from '../services/api';
 
 function Dashboard() {
   // --- STATE & DATA ---
+  const navigate = useNavigate();
   const { alerts, chartData } = useAlerts(3000);
   const [activeVideo, setActiveVideo] = useState(null);
   const [selectedDay, setSelectedDay] = useState(null);
   const [selectedHour, setSelectedHour] = useState(null);
-  const [activeCamera, setActiveCamera] = useState('mac'); 
+  const [activeCamera, setActiveCamera] = useState('mac');
+  const [userInfo, setUserInfo] = useState(() => {
+    const stored = localStorage.getItem('user');
+    return stored ? JSON.parse(stored) : {};
+  });
   const VIDEO_FEED_URL = getVideoFeedUrl(activeCamera);
+
+  useEffect(() => {
+    getUserProfile()
+      .then(data => {
+        setUserInfo(data);
+        localStorage.setItem('user', JSON.stringify(data));
+      })
+      .catch(() => {});
+  }, []);
 
 
   // --- LOGIC: HOURLY CHART DATA ---
@@ -107,6 +122,23 @@ function Dashboard() {
           </div>
         </div>
 
+        {/* USER INFO */}
+        <div className="px-6 py-5 border-b border-slate-800/50">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-slate-800/80 rounded-xl border border-slate-700/50">
+              <User size={18} className="text-slate-400" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-bold text-white truncate">
+                {userInfo.full_name || userInfo.username || 'Хэрэглэгч'}
+              </p>
+              <p className="text-[10px] font-mono text-slate-500 truncate uppercase tracking-wider">
+                {userInfo.org_name || 'Байгууллага тодорхойгүй'}
+              </p>
+            </div>
+          </div>
+        </div>
+
         <nav className="flex-1 p-6 space-y-8">
           <div className="space-y-2">
             <p className="text-[10px] font-mono text-slate-500 uppercase tracking-[0.2em] px-2 mb-4 font-bold">Monitoring</p>
@@ -150,7 +182,10 @@ function Dashboard() {
 
           <div className="space-y-2">
             <p className="text-[10px] font-mono text-slate-500 uppercase tracking-[0.2em] px-2 mb-4 font-bold">System Control</p>
-            <button className="w-full flex items-center gap-4 px-4 py-3 rounded-xl text-slate-500 hover:bg-slate-800/40 transition-all font-bold">
+            <button
+              onClick={() => navigate('/settings')}
+              className="w-full flex items-center gap-4 px-4 py-3 rounded-xl text-slate-500 hover:bg-slate-800/40 transition-all font-bold"
+            >
               <Settings size={18} />
               <span className="text-sm">Settings</span>
             </button>

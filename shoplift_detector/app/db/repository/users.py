@@ -78,7 +78,12 @@ class UserRepository(BaseDB):
         return await self._execute_returning_id(query, params)
 
     async def get_by_identifier(self, identifier: str) -> Optional[Dict[str, Any]]:
-        query = "SELECT * FROM users WHERE (username = %s OR email = %s) AND is_active = TRUE"
+        query = """
+        SELECT u.*, o.name as organization_name
+        FROM users u
+        LEFT JOIN organizations o ON u.organization_id = o.id
+        WHERE (u.username = %s OR u.email = %s) AND u.is_active = TRUE
+        """
         return await self._execute_fetch_one(query, (identifier, identifier))
 
     async def get_by_email(self, email: str) -> Optional[Dict[str, Any]]:

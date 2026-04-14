@@ -165,7 +165,7 @@ async def login_for_access_token(request: Request, form_data: OAuth2PasswordRequ
     React Login.jsx-ээс ирэх хүсэлтийг хүлээн авч, 
     AuthService-ээр баталгаажуулан JWT токен болон User Role-ийг буцаана.
     """
-    user = AuthService.authenticate_user(form_data.username, form_data.password)
+    user = await AuthService.authenticate_user(form_data.username, form_data.password)
     
     if not user:
         raise HTTPException(
@@ -175,28 +175,42 @@ async def login_for_access_token(request: Request, form_data: OAuth2PasswordRequ
         )
     
     # Payload-д хэрэглэгчийн мэдээллийг нууцлан хийнэ
-    access_token = AuthService.create_access_token(
+    access_token = await AuthService.create_access_token(
         data={
             "sub": user["username"],
             "role": user.get("role", "user"),
             "org_id": user.get("organization_id")
         }
     )
-    
+
     return {
-        "access_token": access_token, 
+        "access_token": access_token,
         "token_type": "bearer",
         "user": {
             "username": user["username"],
+            "full_name": user.get("full_name"),
             "role": user.get("role", "user"),
-            "org_id": user.get("organization_id")
+            "org_id": user.get("organization_id"),
+            "org_name": user.get("organization_name"),
         }
     }
 
 @app.get("/users/me")
 async def read_users_me(current_user: dict = Depends(AuthService.get_current_user)):
-    """Одоо нэвтэрсэн байгаа хэрэглэгчийн мэдээллийг буцаана"""
-    return current_user
+    """Одоо нэвтэрсэн байгаа хэрэглэгчийн бүрэн мэдээллийг буцаана"""
+    from app.db.repository.users import UserRepository
+    user_repo = UserRepository()
+    user = await user_repo.get_by_identifier(current_user["username"])
+    if not user:
+        raise HTTPException(status_code=404, detail="Хэрэглэгч олдсонгүй")
+    return {
+        "username": user["username"],
+        "full_name": user.get("full_name"),
+        "email": user.get("email"),
+        "role": user.get("role", "user"),
+        "org_id": user.get("organization_id"),
+        "org_name": user.get("organization_name"),
+    }
 
 # --- CONTACT FORM ---
 

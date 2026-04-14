@@ -85,8 +85,7 @@ if os.path.exists(dist_path):
 
     @app.get("/{catchall:path}")
     async def serve_react_app(catchall: str):
-        # API болон бусад систем замуудыг алгасах
-        api_prefixes = ["auth", "api", "video_feed", "static", "assets", "token", "health", "docs", "redoc", "openapi.json"]
+        api_prefixes = ["auth", "api", "video_feed", "static", "assets", "token", "health", "docs", "redoc", "openapi.json", "users"]
         if any(catchall.startswith(prefix) for prefix in api_prefixes):
             # Энэ хэсэгт FastAPI өөрөө Router-ээс замаа хайхыг зөвшөөрнө
             from fastapi import HTTPException
