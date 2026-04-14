@@ -787,6 +787,94 @@ function FAQSection({ t }) {
   );
 }
 
+function getCameraRate(count) {
+  if (count <= 5) return 20000;
+  if (count <= 20) return 17000;
+  if (count <= 50) return 14000;
+  return 11000;
+}
+
+function PricingCalculator({ t, lang }) {
+  const [cameras, setCameras] = useState(5);
+  const rate = getCameraRate(cameras);
+  const platformFee = 29000;
+  const cameraTotal = cameras * rate;
+  const grandTotal = platformFee + cameraTotal;
+
+  const mn = lang === 'mn';
+
+  return (
+    <motion.div initial={{ opacity: 0, y: 15 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="max-w-3xl mx-auto mb-16">
+      <div className="p-6 sm:p-8 rounded-[2rem] bg-[#0f172a]/80 border border-slate-800/60">
+        {/* Slider */}
+        <div className="mb-6">
+          <label className="block text-sm text-slate-400 mb-3 font-mono">
+            {mn ? 'Камерын тоо' : 'Number of cameras'}
+          </label>
+          <div className="flex items-center gap-4">
+            <input
+              type="range"
+              min={1}
+              max={100}
+              value={cameras}
+              onChange={(e) => setCameras(Number(e.target.value))}
+              className="flex-1 h-2 rounded-full appearance-none bg-slate-700 accent-red-500 cursor-pointer"
+            />
+            <div className="min-w-[60px] text-center px-3 py-1.5 rounded-xl bg-slate-800 border border-slate-700">
+              <span className="text-xl font-black text-white">{cameras}</span>
+            </div>
+          </div>
+          {/* Tier markers */}
+          <div className="flex justify-between mt-2 text-[10px] text-slate-600 font-mono px-1">
+            <span>1</span><span>5</span><span>20</span><span>50</span><span>100</span>
+          </div>
+        </div>
+
+        {/* Tier table */}
+        <div className="mb-6">
+          <table className="w-full text-sm">
+            <tbody>
+              {t.tiers.map((tier, i) => {
+                const tierRates = [20000, 17000, 14000, 11000];
+                const isActive = rate === tierRates[i];
+                return (
+                  <tr key={i} className={`border-b border-slate-800/50 last:border-0 transition-colors ${isActive ? 'bg-red-600/10' : ''}`}>
+                    <td className={`py-2.5 pl-3 pr-6 font-mono ${isActive ? 'text-white' : 'text-slate-500'}`}>
+                      {isActive && <span className="inline-block w-1.5 h-1.5 rounded-full bg-red-500 mr-2" />}
+                      {tier.range}
+                    </td>
+                    <td className={`py-2.5 pr-3 text-right font-bold ${isActive ? 'text-white' : 'text-slate-500'}`}>
+                      {tier.rate}<span className="font-normal text-xs ml-1 text-slate-600">/{mn ? 'сар' : 'mo'}</span>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Calculation breakdown */}
+        <div className="space-y-3 pt-4 border-t border-slate-800/50">
+          <div className="flex justify-between text-sm">
+            <span className="text-slate-400">{mn ? 'Платформ хураамж' : 'Platform fee'}</span>
+            <span className="text-slate-300 font-mono">₮{platformFee.toLocaleString()}</span>
+          </div>
+          <div className="flex justify-between text-sm">
+            <span className="text-slate-400">{cameras} {mn ? 'камер' : 'cameras'} × ₮{rate.toLocaleString()}</span>
+            <span className="text-slate-300 font-mono">₮{cameraTotal.toLocaleString()}</span>
+          </div>
+          <div className="flex justify-between items-baseline pt-3 border-t border-slate-700/50">
+            <span className="text-slate-300 font-bold">{mn ? 'Сарын нийт дүн' : 'Monthly total'}</span>
+            <span className="text-2xl sm:text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-red-500 to-amber-500">
+              ₮{grandTotal.toLocaleString()}
+            </span>
+          </div>
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
 function PricingSection({ t, lang }) {
   return (
     <section id="pricing" className="py-32 border-t border-white/5 bg-slate-900/10">
@@ -801,28 +889,8 @@ function PricingSection({ t, lang }) {
           <p className="text-slate-400 max-w-2xl mx-auto text-lg font-light">{t.subtitle}</p>
         </div>
 
-        {/* Platform fee + Tier table */}
-        <motion.div initial={{ opacity: 0, y: 15 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="max-w-2xl mx-auto mb-16">
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-6">
-            <div className="px-6 py-4 rounded-2xl bg-gradient-to-r from-red-600/20 to-amber-600/20 border border-red-500/30 text-center">
-              <div className="text-3xl font-black text-white">{t.platformFee}</div>
-              <div className="text-xs text-slate-400 mt-1">{t.platformFeeLabel}</div>
-            </div>
-            <span className="text-2xl font-bold text-slate-500">+</span>
-            <div className="w-full sm:w-auto">
-              <table className="w-full text-sm">
-                <tbody>
-                  {t.tiers.map((tier, i) => (
-                    <tr key={i} className="border-b border-slate-800/50 last:border-0">
-                      <td className="py-2 pr-6 text-slate-400 font-mono">{tier.range}</td>
-                      <td className="py-2 text-white font-bold text-right">{tier.rate}<span className="text-slate-500 font-normal text-xs ml-1">/{lang === 'mn' ? 'сар' : 'mo'}</span></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </motion.div>
+        {/* Pricing Calculator */}
+        <PricingCalculator t={t} lang={lang} />
 
         <div className="grid md:grid-cols-3 gap-8 max-w-5xl mx-auto">
           {t.plans.map((plan, idx) => (
