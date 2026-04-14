@@ -80,7 +80,7 @@ export default function ForgotPassword() {
                <KeyRound className="text-red-500" size={28} />
             </div>
             <h2 className="text-2xl font-black text-white italic uppercase tracking-tighter">
-              {step === 1 ? "Recover Access" : step === 2 ? "Verify Identity" : "Reset Password"}
+              {step === 1 ? "Нууц үг сэргээх" : step === 2 ? "Код баталгаажуулах" : "Шинэ нууц үг"}
             </h2>
           </div>
 
@@ -96,13 +96,13 @@ export default function ForgotPassword() {
               <div className="relative">
                 <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-600" size={18} />
                 <input 
-                  type="email" required placeholder="Enter Registered Email" 
+                  type="email" required placeholder="Бүртгэлтэй имэйл хаяг" 
                   className="w-full bg-slate-950/60 border border-slate-800 p-4 pl-12 rounded-2xl text-white text-sm focus:border-red-500/40 outline-none transition-all"
                   onChange={(e) => setEmail(e.target.value)}
                 />
               </div>
               <button disabled={loading} className="w-full bg-red-600 py-4 rounded-2xl font-black text-white uppercase tracking-widest text-xs hover:bg-red-500 transition-all flex items-center justify-center gap-2">
-                {loading ? <Loader2 className="animate-spin" size={18} /> : "Request OTP Code"}
+                {loading ? <Loader2 className="animate-spin" size={18} /> : "Код авах"}
               </button>
             </form>
           )}
@@ -113,13 +113,13 @@ export default function ForgotPassword() {
               <div className="relative">
                 <ShieldCheck className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-600" size={18} />
                 <input 
-                  type="text" required placeholder="6-Digit Code" maxLength={6}
+                  type="text" required placeholder="6 оронтой код" maxLength={6}
                   className="w-full bg-slate-950/60 border border-slate-800 p-4 pl-12 rounded-2xl text-white text-sm focus:border-red-500/40 outline-none transition-all tracking-[0.5em] font-bold"
                   onChange={(e) => setCode(e.target.value)}
                 />
               </div>
               <button disabled={loading} className="w-full bg-red-600 py-4 rounded-2xl font-black text-white uppercase tracking-widest text-xs hover:bg-red-500 transition-all flex items-center justify-center gap-2">
-                {loading ? <Loader2 className="animate-spin" size={18} /> : "Verify Code"}
+                {loading ? <Loader2 className="animate-spin" size={18} /> : "Баталгаажуулах"}
               </button>
             </form>
           )}
@@ -130,13 +130,13 @@ export default function ForgotPassword() {
               <div className="relative">
                 <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-600" size={18} />
                 <input 
-                  type="password" required placeholder="New Secure Password" 
+                  type="password" required placeholder="Шинэ нууц үг" 
                   className="w-full bg-slate-950/60 border border-slate-800 p-4 pl-12 rounded-2xl text-white text-sm focus:border-red-500/40 outline-none transition-all"
                   onChange={(e) => setNewPassword(e.target.value)}
                 />
               </div>
               <button disabled={loading} className="w-full bg-red-600 py-4 rounded-2xl font-black text-white uppercase tracking-widest text-xs hover:bg-red-500 transition-all flex items-center justify-center gap-2">
-                {loading ? <Loader2 className="animate-spin" size={18} /> : "Update Password"}
+                {loading ? <Loader2 className="animate-spin" size={18} /> : "Нууц үг шинэчлэх"}
               </button>
             </form>
           )}

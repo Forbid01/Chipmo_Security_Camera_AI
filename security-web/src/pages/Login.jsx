@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../services/api'; 
-import { Lock, Mail, Loader2, ShieldCheck } from 'lucide-react';
+import { Lock, Mail, Loader2, ShieldCheck, ArrowLeft } from 'lucide-react';
 import { motion, useMotionValue, useSpring, useTransform } from 'framer-motion';
 
 export default function Login() {
@@ -110,6 +110,13 @@ export default function Login() {
         >
           {/* Scanline Animation */}
           <div className="absolute top-0 left-0 w-full h-[2px] bg-gradient-to-r from-transparent via-red-500/40 to-transparent animate-pulse" />
+          <button
+            type="button"
+            onClick={() => navigate('/')}
+            className="absolute top-8 left-8 text-slate-500 hover:text-white transition-all hover:-translate-x-1"
+          >
+            <ArrowLeft size={20} />
+          </button>
           <div className="text-center mb-10 group cursor-default">
   {/* LOGO AREA */}
   <div className="relative inline-flex mb-6">
@@ -142,12 +149,12 @@ export default function Login() {
   {/* TEXT AREA */}
   <div className="flex flex-col items-center leading-none">
     <h1 className="text-3xl font-black tracking-tighter text-white uppercase italic flex items-center">
-      SECURITY<span className="text-red-600 ml-1">.AI</span>
+      CHIPMO<span className="text-red-600 ml-1">.AI</span>
     </h1>
     <div className="flex items-center gap-2 mt-3">
       <div className="h-[1px] w-4 bg-slate-800" />
       <span className="text-[9px] font-mono text-slate-500 tracking-[0.4em] uppercase font-bold">
-        Access Control V11.0
+        Smart Loss Prevention
       </span>
       <div className="h-[1px] w-4 bg-slate-800" />
     </div>
@@ -170,7 +177,7 @@ export default function Login() {
               <input
                 type="text"
                 required
-                placeholder="Username or Email"
+                placeholder="Нэвтрэх нэр эсвэл имэйл"
                 className="w-full bg-slate-950/60 border border-slate-800 p-4 pl-12 rounded-2xl text-white text-sm focus:outline-none focus:border-red-500/40 focus:ring-4 focus:ring-red-500/5 transition-all placeholder:text-slate-700"
                 onChange={(e) => setEmail(e.target.value)}
               />
@@ -181,7 +188,7 @@ export default function Login() {
               <input 
                 type="password" 
                 required
-                placeholder="Password" 
+                placeholder="Нууц үг"
                 className="w-full bg-slate-950/60 border border-slate-800 p-4 pl-12 rounded-2xl text-white text-sm focus:outline-none focus:border-red-500/40 focus:ring-4 focus:ring-red-500/5 transition-all placeholder:text-slate-700"
                 onChange={(e) => setPassword(e.target.value)}
               />
@@ -192,7 +199,7 @@ export default function Login() {
                 onClick={() => navigate('/forgot-password')}
                 className="text-[10px] font-mono uppercase tracking-widest text-slate-500 hover:text-red-500 transition-colors"
               >
-                Forgot Password?
+                Нууц үг мартсан?
               </button>
             </div>
           </div>
@@ -201,24 +208,24 @@ export default function Login() {
             disabled={loading}
             className="w-full bg-red-600 mt-8 py-4 rounded-2xl font-black text-white uppercase tracking-[0.2em] text-xs hover:bg-red-500 active:scale-[0.97] transition-all duration-300 shadow-xl shadow-red-900/30 disabled:opacity-50 flex items-center justify-center gap-3"
           >
-            {loading ? <Loader2 className="animate-spin" size={18} /> : "Login"}
+            {loading ? <Loader2 className="animate-spin" size={18} /> : "Нэвтрэх"}
           </button>
 
           <div className="flex flex-col items-center justify-center mt-10">
             <div className="flex items-center gap-3 bg-slate-950/80 px-5 py-2.5 rounded-full border border-slate-800/80 hover:border-slate-700 transition-colors cursor-default">
-              <span className="text-slate-500 text-[10px] uppercase tracking-widest font-bold">New User?</span>
+              <span className="text-slate-500 text-[10px] uppercase tracking-widest font-bold">Шинэ хэрэглэгч?</span>
               <button
                 type="button"
                 onClick={() => navigate('/register')}
                 className="text-red-500 hover:text-red-400 font-black text-[10px] uppercase tracking-[0.15em] transition-all"
               >
-                Create Account
+                Бүртгүүлэх
               </button>
             </div>
           </div>
 
           <p className="text-center mt-8 text-[9px] text-slate-700 font-mono uppercase tracking-[0.4em] opacity-40">
-            System Identity: SEC-CAM-MAC-V1
+            Chipmo Security AI
           </p>
         </form>
       </motion.div>

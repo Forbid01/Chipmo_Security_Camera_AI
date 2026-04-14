@@ -19,6 +19,9 @@ class Store(Base, TimestampMixin):
     alert_threshold: Mapped[float] = mapped_column(Float, default=80.0)
     alert_cooldown: Mapped[int] = mapped_column(Integer, default=15)
 
+    # Telegram мэдэгдэл - дэлгүүр бүрт өөр chat_id байж болно
+    telegram_chat_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+
     # Relationships
     organization: Mapped["Organization"] = relationship(back_populates="stores")
     cameras: Mapped[List["Camera"]] = relationship(back_populates="store", cascade="all, delete-orphan")

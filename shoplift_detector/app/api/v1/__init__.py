@@ -7,6 +7,7 @@ from .stores import router as stores_router
 from .video import router as video_router
 from .feedback import router as feedback_router
 from .my_cameras import router as my_cameras_router
+from .telegram import router as telegram_router
 
 api_router = APIRouter(prefix="/api/v1")
 
@@ -18,3 +19,4 @@ api_router.include_router(stores_router, prefix="/stores", tags=["Stores"])
 api_router.include_router(video_router, prefix="/video", tags=["Video Streaming"])
 api_router.include_router(feedback_router, prefix="/feedback", tags=["AI Feedback & Learning"])
 api_router.include_router(my_cameras_router, prefix="/my/cameras", tags=["My Cameras"])
+api_router.include_router(telegram_router, prefix="/telegram", tags=["Telegram Notifications"])

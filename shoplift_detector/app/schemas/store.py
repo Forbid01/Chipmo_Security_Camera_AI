@@ -9,6 +9,7 @@ class StoreCreate(BaseModel):
     organization_id: int
     alert_threshold: float = 80.0
     alert_cooldown: int = 15
+    telegram_chat_id: Optional[str] = None
 
 
 class StoreUpdate(BaseModel):
@@ -16,6 +17,7 @@ class StoreUpdate(BaseModel):
     address: Optional[str] = None
     alert_threshold: Optional[float] = None
     alert_cooldown: Optional[int] = None
+    telegram_chat_id: Optional[str] = None
 
 
 class StoreResponse(BaseModel):
@@ -26,6 +28,7 @@ class StoreResponse(BaseModel):
     organization_name: Optional[str] = None
     alert_threshold: float
     alert_cooldown: int
+    telegram_chat_id: Optional[str] = None
     camera_count: int = 0
     created_at: datetime
 

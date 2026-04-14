@@ -20,6 +20,7 @@ class UserCreate(BaseModel):
     phone_number: str = None
     password: str
     full_name: str = None
+    org_name: str = None
 
 class ForgotPasswordRequest(BaseModel):
     email: EmailStr
@@ -59,20 +60,26 @@ class UserOrgUpdate(BaseModel):
 @router.post("/register")
 async def register(user_data: UserCreate):
     """Шинэ хэрэглэгч бүртгэх"""
+    # Create organization if org_name provided
+    org_id = None
+    if user_data.org_name and user_data.org_name.strip():
+        org_id = await AuthService.create_organization(user_data.org_name.strip())
+
     user_id = await AuthService.register_user(
-        username=user_data.username, 
-        email=user_data.email, 
-        password=user_data.password, 
+        username=user_data.username,
+        email=user_data.email,
+        password=user_data.password,
         phone_number=user_data.phone_number,
-        full_name=user_data.full_name
+        full_name=user_data.full_name,
+        org_id=org_id
     )
-    
+
     if not user_id:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Бүртгэл амжилтгүй боллоо."
         )
-        
+
     return {"message": "Хэрэглэгч амжилттай бүртгэгдлээ", "user_id": user_id}
 
 @router.post("/login")

@@ -58,6 +58,10 @@ async def lifespan(app: FastAPI):
     # Load cameras from DB and register them
     await _load_cameras_from_db()
 
+    # Configure Telegram notifier
+    from app.services.telegram_notifier import telegram_notifier
+    telegram_notifier.configure(settings.TELEGRAM_TOKEN)
+
     # Start background services
     logger.info("starting_background_services")
     threading.Thread(target=alert_worker, daemon=True, name="alert-worker").start()

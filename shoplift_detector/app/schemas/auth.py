@@ -9,6 +9,7 @@ class UserCreate(BaseModel):
     phone_number: Optional[str] = None
     password: str
     full_name: Optional[str] = None
+    org_name: Optional[str] = None
 
     @field_validator("username")
     @classmethod

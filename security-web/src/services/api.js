@@ -284,6 +284,31 @@ export const getLearningStatus = async (storeId = null) => {
 };
 
 // ============================================
+// TELEGRAM NOTIFICATIONS
+// ============================================
+
+export const setupTelegram = async (storeId, chatId) => {
+  const response = await api.post("/api/v1/telegram/setup", {
+    store_id: storeId,
+    chat_id: chatId,
+  });
+  return response.data;
+};
+
+export const testTelegram = async (storeId, chatId) => {
+  const response = await api.post("/api/v1/telegram/test", {
+    store_id: storeId,
+    chat_id: chatId,
+  });
+  return response.data;
+};
+
+export const removeTelegram = async (storeId) => {
+  const response = await api.delete(`/api/v1/telegram/${storeId}`);
+  return response.data;
+};
+
+// ============================================
 // CONTACT
 // ============================================
 

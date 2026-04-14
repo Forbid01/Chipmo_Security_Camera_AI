@@ -37,9 +37,9 @@ export const VideoModal = ({ videoUrl, onClose }) => (
 
           <div className="p-6 bg-slate-900/50">
             <h3 className="text-xl font-bold flex items-center gap-2 text-white">
-              <Activity className="text-red-500" /> AI Evidence Playback
+              <Activity className="text-red-500" /> AI бичлэг
             </h3>
-            <p className="text-slate-400 text-sm italic">Security Recording ID: {videoUrl.split('/').pop()}</p>
+            <p className="text-slate-400 text-sm italic">Бичлэгийн ID: {videoUrl.split('/').pop()}</p>
           </div>
         </motion.div>
       </motion.div>

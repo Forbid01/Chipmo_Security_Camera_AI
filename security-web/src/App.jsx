@@ -8,7 +8,9 @@ import Dashboard from './pages/Dashboard';
 import DashboardAdmin from './pages/DashboardAdmin';
 import Settings from './pages/Settings';
 import MyCameras from './pages/MyCameras';
+import MyStores from './pages/MyStores';
 import ForgotPassword from './pages/ForgetPassword';
+import NotFound from './pages/NotFound';
 
 function App() {
   const token = localStorage.getItem('token');
@@ -56,6 +58,12 @@ function App() {
           element={isAuthenticated ? <MyCameras /> : <Navigate to="/login" />}
         />
 
+        {/* Дэлгүүрүүд хуудас */}
+        <Route
+          path="/stores"
+          element={isAuthenticated ? <MyStores /> : <Navigate to="/login" />}
+        />
+
         {/* 3. SUPER ADMIN CONTROL PANEL (Хамгаалалттай) */}
         <Route 
           path="/admin/control" 
@@ -66,7 +74,7 @@ function App() {
           } 
         />
 
-        <Route path="*" element={<Navigate to="/" />} />
+        <Route path="*" element={<NotFound />} />
       </Routes>
     </Router>
     </ErrorBoundary>

@@ -13,14 +13,14 @@ class StoreRepository:
 
     async def create(self, data: StoreCreate) -> Optional[int]:
         query = text("""
-            INSERT INTO stores (name, address, organization_id, alert_threshold, alert_cooldown)
-            VALUES (:name, :address, :org_id, :threshold, :cooldown)
+            INSERT INTO stores (name, address, organization_id, alert_threshold, alert_cooldown, telegram_chat_id)
+            VALUES (:name, :address, :org_id, :threshold, :cooldown, :telegram_chat_id)
             RETURNING id
         """)
         result = await self.db.execute(query, {
             "name": data.name, "address": data.address,
             "org_id": data.organization_id, "threshold": data.alert_threshold,
-            "cooldown": data.alert_cooldown,
+            "cooldown": data.alert_cooldown, "telegram_chat_id": data.telegram_chat_id,
         })
         await self.db.commit()
         row = result.fetchone()

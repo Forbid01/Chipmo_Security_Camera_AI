@@ -29,7 +29,7 @@ class AuthService:
     # --- БҮРТГЭЛ БОЛОН НЭВТРЭЛТ ---
 
     @classmethod
-    async def register_user(cls, username, email, password, phone_number=None, full_name=None, role="user"):
+    async def register_user(cls, username, email, password, phone_number=None, full_name=None, role="user", org_id=None):
         """Шинэ хэрэглэгч бүртгэх"""
         validate_password_strength(password)
         if await user_repo.get_by_identifier(username) or await user_repo.get_by_email(email):
@@ -38,14 +38,14 @@ class AuthService:
                 detail="Хэрэглэгчийн нэр эсвэл имэйл бүртгэлтэй байна."
             )
         hashed_pwd = get_password_hash(password)
-        # Repository-ийн create функц чинь 'role' хүлээж авдаг байх шаардлагатай
         user_id = await user_repo.create(
-            username=username, 
-            email=email, 
-            phone_number=phone_number, 
-            hashed_password=hashed_pwd, 
+            username=username,
+            email=email,
+            phone_number=phone_number,
+            hashed_password=hashed_pwd,
             full_name=full_name,
-            role=role
+            role=role,
+            organization_id=org_id
         )
         return user_id
 

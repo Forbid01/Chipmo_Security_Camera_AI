@@ -3,128 +3,251 @@ import '../App.css';
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { motion, AnimatePresence, useScroll, useSpring } from 'framer-motion';
-import { 
-  ShieldCheck, Zap, Cpu, Activity, ChevronRight, Lock, Globe, 
-  Camera, BrainCircuit, Server, Database, Terminal, GitBranch 
+import {
+  ShieldCheck, Zap, Cpu, Activity, ChevronRight, Lock, Globe,
+  Camera, BrainCircuit, Server, Database, Terminal, GitBranch,
+  Phone, Mail, MapPin, Check, Star, Menu, X, MessageSquareQuote,
+  ChevronDown, HelpCircle, Store
 } from 'lucide-react';
 
+import { sendContactForm } from '../services/api';
 import ParticleBackground from './ParticleBackground';
 
 const content = {
   en: {
-    nav: { features: "Features", tech: "Technology", contact: "Contact", about: "About", login: "Login" },
+    nav: { features: "Features", pricing: "Pricing", contact: "Contact", about: "About", login: "Login", register: "Start Free" },
     hero: {
-      badge: "YOLO11 Neural Engine Active",
-      title: "NEXT-GEN",
-      subtitle: "RETAIL INTELLIGENCE",
-      desc: "Protect your assets with military-grade AI. Our computer vision system monitors your store 24/7, detecting suspicious behavior in real-time.",
-      btnInit: "INITIALIZE SYSTEM",
-      btnDoc: "Documentation"
+      badge: "AI-Powered Loss Prevention",
+      title: "STOP THEFT",
+      subtitle: "BEFORE IT HAPPENS",
+      desc: "Chipmo turns your existing security cameras into smart theft detectors. Get instant alerts on your phone when suspicious activity is detected — no new hardware needed.",
+      btnInit: "START FREE TRIAL",
+      btnDoc: "See How It Works"
     },
     features: {
-      tag: "Engineered for Precision",
-      desc: "Our architecture combines cutting-edge computer vision with a high-performance backend.",
-      f1: { title: "Real-time Detection", desc: "Powered by YOLO11, our models process high-resolution feeds in sub-milliseconds." },
-      f2: { title: "Instant Alerts", desc: "Immediate notifications the second suspicious patterns or behaviors are identified." },
-      f3: { title: "Deep Analytics", desc: "Comprehensive dashboard for reviewing incident logs and statistical trends." }
+      tag: "Why Store Owners Choose Chipmo",
+      desc: "Our customers reduce theft losses by an average of 60%. Here's how.",
+      f1: { title: "24/7 Smart Monitoring", desc: "AI watches every camera feed around the clock. No more relying on tired security guards or reviewing hours of footage." },
+      f2: { title: "Instant Phone Alerts", desc: "Get a push notification with a snapshot the moment something suspicious happens. React in seconds, not hours." },
+      f3: { title: "Weekly Reports", desc: "See which hours are highest risk, which areas need attention, and track how incidents trend over time." }
     },
     techSection: {
-        badge: "System Architecture",
-        title1: "THE NEURAL",
-        title2: "PIPELINE",
-        subtitle: "Built on a modern high-performance stack, our system processes live video feeds through advanced YOLO11 models to detect complex behavioral patterns in real-time.",
+        badge: "How It Works",
+        title1: "SIMPLE",
+        title2: "SETUP",
+        subtitle: "Connect your cameras, and Chipmo's AI starts learning your store's patterns within hours. No technical skills required.",
         steps: [
-          { title: "Video Ingestion", desc: "RTSP/HTTP streams captured from security cameras at 60 FPS." },
-          { title: "AI Processing", desc: "YOLO11n-pose evaluates every frame for skeletal anomalies and objects." },
-          { title: "Logic Engine", desc: "FastAPI backend calculates intent based on movement history & proximity." },
-          { title: "Data & Alerts", desc: "Encrypted storage and instant WebSocket triggers to the React frontend." }
+          { title: "Connect Cameras", desc: "Works with any IP camera you already have — RTSP, MJPEG, or USB webcams." },
+          { title: "AI Learns Your Store", desc: "Our AI automatically adapts to your store layout, lighting, and traffic patterns." },
+          { title: "Real-time Detection", desc: "Suspicious behaviors like concealment, loitering, and grab-and-run are flagged instantly." },
+          { title: "You Get Notified", desc: "Alerts with snapshots sent to your dashboard and phone. Review, confirm, or dismiss." }
         ],
-        techTitle: "Tech Specifications",
+        techTitle: "Built for Reliability",
         stack: [
-          { title: "Frontend Interface", tech: "React 18, Vite, TailwindCSS, Framer Motion" },
-          { title: "Backend Microservices", tech: "Python 3.11, FastAPI, WebSocket, OpenCV" },
-          { title: "Neural Network", tech: "YOLO11 (Ultralytics), PyTorch, TensorRT" },
-          { title: "Database & Storage", tech: "PostgreSQL, SQLAlchemy, Local Artifact Storage" }
+          { title: "Works with any camera", tech: "RTSP, MJPEG, Axis, Hikvision, Dahua, USB" },
+          { title: "Cloud or On-premise", tech: "Your data stays where you want it" },
+          { title: "Multi-store Support", tech: "Manage all your branches from one dashboard" },
+          { title: "Auto-learning AI", tech: "Gets smarter the more you use it — fewer false alarms over time" }
         ],
         terminal: {
-          load: "Model YOLO11m-pose loaded successfully.",
-          conn: "Connecting to Camera_01... [OK]",
-          proc: "Processing frames @ 12ms latency...",
-          detect: "Subject_ID_84 tracked.",
-          alert: "ALERT CRITICAL: Shoplifting behavior identified.",
-          trigger: "TRIGGER: WebSocket -> frontend_client",
-          save: "SAVE: Writing artifact"
+          load: "AI model loaded — ready to protect your store.",
+          conn: "Camera connected: Front Entrance... [OK]",
+          proc: "Monitoring in progress...",
+          detect: "Person near high-value shelf tracked.",
+          alert: "ALERT: Suspicious concealment behavior detected.",
+          trigger: "Notification sent to store manager.",
+          save: "Incident snapshot saved."
         }
     },
+    pricing: {
+      badge: "Simple Pricing",
+      title: "PLANS FOR",
+      titleHighlight: "EVERY STORE",
+      subtitle: "Start free, upgrade when you're ready. No hidden fees.",
+      plans: [
+        {
+          name: "Starter",
+          price: "Үнэгүй",
+          period: "",
+          desc: "For small stores getting started",
+          features: ["1 camera", "Basic alerts", "7-day history", "Email support"],
+          cta: "Start Free",
+          highlighted: false
+        },
+        {
+          name: "Business",
+          price: "₮49,000",
+          period: "/camera/mo",
+          desc: "For growing retail businesses",
+          features: ["Unlimited cameras", "Instant phone alerts", "30-day history", "Auto-learning AI", "Weekly reports", "Priority support"],
+          cta: "Start 14-Day Trial",
+          highlighted: true
+        },
+        {
+          name: "Enterprise",
+          price: "Custom",
+          period: "",
+          desc: "For chains & large operations",
+          features: ["Multi-store dashboard", "On-premise option", "Custom AI training", "Dedicated manager", "SLA guarantee", "API access"],
+          cta: "Contact Sales",
+          highlighted: false
+        }
+      ]
+    },
     contact: {
-      title: "GET IN TOUCH",
-      desc: "If you have questions about the system or partnership proposals, please contact us.",
-      form: { name: "Full Name", email: "Email Address", sub: "Subject", msg: "Your Message", send: "SEND MESSAGE", sending: "SENDING..." }
+      title: "LET'S TALK",
+      desc: "Questions about setup, pricing, or partnership? We typically respond within 2 hours during business hours.",
+      form: { name: "Your Name", email: "Email Address", sub: "Subject", msg: "How can we help?", send: "SEND MESSAGE", sending: "SENDING..." },
+      phone: "+976 8810-8766",
+      email: "info@chipmo.mn",
+      location: "Ulaanbaatar, Mongolia"
     },
     about: {
-      mission: "Our Mission",
-      title: "PIONEERING THE FUTURE OF SAFETY",
-      desc: "Security.AI aims to solve loss and theft issues in modern retail using AI. We analyze human behavior in real-time using YOLO11.",
-      stat1: "Detection Accuracy",
-      stat2: "Processing Latency"
+      mission: "Why We Built This",
+      title: "EVERY STORE DESERVES SMART SECURITY",
+      desc: "Mongolian retailers lose billions to theft every year. Most can't afford advanced security systems. We built Chipmo to make AI-powered loss prevention accessible to every store — from small shops to large chains.",
+      stat1: "Theft Reduction",
+      stat2: "Alert Speed"
+    },
+    testimonials: {
+      badge: "Trusted by Store Owners",
+      title: "WHAT OUR",
+      titleHighlight: "CUSTOMERS SAY",
+      items: [
+        { name: "Б. Батбаяр", role: "Номин супермаркет, Менежер", text: "Chipmo суулгаснаас хойш бараа алдагдал мэдэгдэхүйц буурсан. Ялангуяа шөнийн ээлжинд AI маш сайн ажиллаж байна." },
+        { name: "Д. Оюунчимэг", role: "CU convenience store, Эзэн", text: "Өмнө нь камерын бичлэг шалгахад л цаг үрдэг байсан. Одоо Telegram-аар шууд мэдэгдэл ирдэг болсон нь маш тохиромжтой." },
+        { name: "Г. Эрдэнэбат", role: "Techzone electronics, Захирал", text: "3 салбартаа суулгасан. Нэг самбараас бүгдийг хянадаг нь хамгийн давуу тал. AI өөрөө суралцдаг нь гайхалтай." }
+      ]
+    },
+    faq: {
+      badge: "FAQ",
+      title: "FREQUENTLY",
+      titleHighlight: "ASKED QUESTIONS",
+      items: [
+        { q: "What cameras does Chipmo work with?", a: "Chipmo works with any IP camera — RTSP, MJPEG, Axis, Hikvision, Dahua, and USB webcams. If you already have security cameras, they'll work." },
+        { q: "How long does setup take?", a: "About 15 minutes. Connect your cameras, and the AI starts learning your store's patterns within hours." },
+        { q: "What if the internet goes down?", a: "Chipmo continues recording locally. Alerts will be sent once connectivity is restored." },
+        { q: "How accurate is the detection?", a: "Our AI reduces false alarms over time by learning from your feedback. Most stores see 60%+ theft reduction within the first month." },
+        { q: "Is my video data secure?", a: "Yes. All data is encrypted and you can choose cloud or on-premise storage. We never share your data." }
+      ]
     }
   },
   mn: {
-    nav: { features: "Боломжууд", tech: "Технологи", contact: "Холбоо барих", about: "Тухай", login: "Нэвтрэх" },
+    nav: { features: "Боломжууд", pricing: "Үнэ", contact: "Холбоо барих", about: "Тухай", login: "Нэвтрэх", register: "Үнэгүй эхлэх" },
     hero: {
-      badge: "YOLO11 Нейрон систем идэвхтэй",
-      title: "ШИНЭ ҮЕИЙН",
-      subtitle: "УХААЛАГ ХЯНАЛТ",
-      desc: "Манай систем таны дэлгүүрийг 24/7 хянаж, сэжигтэй үйлдлийг бодит хугацаанд илрүүлнэ.",
-      btnInit: "СИСТЕМИЙГ ЭХЛҮҮЛЭХ",
-      btnDoc: "Танилцуулга"
+      badge: "AI хулгай илрүүлэгч",
+      title: "ХУЛГАЙГ",
+      subtitle: "УРЬДЧИЛАН СЭРГИЙЛ",
+      desc: "Chipmo таны одоо байгаа камеруудыг ухаалаг хулгай илрүүлэгч болгоно. Сэжигтэй үйлдэл илэрмэгц таны утсанд шууд мэдэгдэл ирнэ — нэмэлт төхөөрөмж шаардлагагүй.",
+      btnInit: "ҮНЭГҮЙ ТУРШИЖ ҮЗЭХ",
+      btnDoc: "Хэрхэн ажилладаг вэ?"
     },
     features: {
-      tag: "Нарийвчлалд зориулагдсан",
-      desc: "Манай архитектур нь хамгийн сүүлийн үеийн компьютер вишнийг өндөр гүйцэтгэлтэй бэкэндтэй хослуулдаг.",
-      f1: { title: "Бодит хугацааны илрүүлэлт", desc: "YOLO11-ээр тоноглогдсон манай модел өндөр нягтралтай дүрсийг миллисекундэд боловсруулдаг." },
-      f2: { title: "Шуурхай мэдэгдэл", desc: "Сэжигтэй хөдөлгөөн эсвэл зан төлөв илэрсэн даруйд шууд мэдэгдэл илгээнэ." },
-      f3: { title: "Гүнзгий анализ", desc: "Гарсан зөрчлүүд болон долоо хоног, цагийн статистик мэдээллийг хянах боломжтой." }
+      tag: "Дэлгүүрийн эзэд яагаад сонгодог вэ?",
+      desc: "Манай харилцагчид хулгайн алдагдлыг дунджаар 60%-иар бууруулсан. Хэрхэн ажилладгийг харна уу.",
+      f1: { title: "24/7 Ухаалаг хяналт", desc: "AI таны бүх камерыг шөнө дөлөө хянана. Ядарсан харуул, олон цагийн бичлэг шалгах шаардлагагүй." },
+      f2: { title: "Утсанд шууд мэдэгдэл", desc: "Сэжигтэй зүйл илэрмэгц зурагтай мэдэгдэл таны утсанд ирнэ. Цаг биш — секундэд хариу үйлдэл хийнэ." },
+      f3: { title: "Долоо хоногийн тайлан", desc: "Аль цагт эрсдэл өндөр, аль хэсэгт анхаарах хэрэгтэй, зөрчил хэрхэн өөрчлөгдөж байгааг хараарай." }
     },
     techSection: {
-        badge: "Системийн бүтэц",
-        title1: "НЕЙРОН",
-        title2: "ДАМЖУУЛАЛТ",
-        subtitle: "Орчин үеийн өндөр гүйцэтгэлтэй технологиуд дээр суурилсан манай систем видео урсгалыг YOLO11 моделиор бодит хугацаанд шинжилж, зан төлөвийн хэв шинжийг илрүүлдэг.",
+        badge: "Хэрхэн ажилладаг вэ?",
+        title1: "ХЯЛБАР",
+        title2: "СУУЛГАЛТ",
+        subtitle: "Камераа холбоход л Chipmo-ийн AI таны дэлгүүрийн нөхцөлд хэдэн цагийн дотор суралцаж эхэлнэ. Техникийн мэдлэг шаардлагагүй.",
         steps: [
-          { title: "Видео хүлээн авах", desc: "Хяналтын камераас RTSP/HTTP урсгалыг 60 FPS хурдтайгаар хүлээн авна." },
-          { title: "AI Боловсруулалт", desc: "YOLO11n-pose ашиглан фрейм бүрт хүний биеийн хөдөлгөөн, объектыг шинжилнэ." },
-          { title: "Логик хөдөлгүүр", desc: "FastAPI бэкэнд хөдөлгөөний түүх болон зайн дээр үндэслэн зорилгыг тооцоолно." },
-          { title: "Өгөгдөл ба Мэдэгдэл", desc: "Нууцлагдсан хадгалалт болон WebSocket-ээр шуурхай мэдэгдлийг React руу илгээнэ." }
+          { title: "Камер холбох", desc: "Таны одоо байгаа аль ч IP камертай ажиллана — RTSP, MJPEG, USB вэбкам." },
+          { title: "AI суралцана", desc: "Манай AI таны дэлгүүрийн зохион байгуулалт, гэрэлтүүлэг, хүний урсгалд автоматаар дасна." },
+          { title: "Бодит цагт илрүүлэх", desc: "Бараа нуух, удаан сэлгүүцэх, шүүрэн авах зэрэг сэжигтэй үйлдлийг шууд илрүүлнэ." },
+          { title: "Танд мэдэгдэнэ", desc: "Зурагтай мэдэгдэл таны самбар болон утсанд ирнэ. Шалгаж, баталгаажуулж, эсвэл хаана." }
         ],
-        techTitle: "Технологийн үзүүлэлт",
+        techTitle: "Найдвартай систем",
         stack: [
-          { title: "Фронтенд интерфейс", tech: "React 18, Vite, TailwindCSS, Framer Motion" },
-          { title: "Бэкэнд үйлчилгээ", tech: "Python 3.11, FastAPI, WebSocket, OpenCV" },
-          { title: "Нейрон сүлжээ", tech: "YOLO11 (Ultralytics), PyTorch, TensorRT" },
-          { title: "Өгөгдлийн сан", tech: "PostgreSQL, SQLAlchemy, Local Artifact Storage" }
+          { title: "Аль ч камертай ажиллана", tech: "RTSP, MJPEG, Axis, Hikvision, Dahua, USB" },
+          { title: "Cloud эсвэл дотоод сервер", tech: "Таны мэдээлэл таны хүссэн газар хадгалагдана" },
+          { title: "Олон салбар дэмжинэ", tech: "Бүх салбараа нэг самбараас удирдаарай" },
+          { title: "Өөрөө суралцдаг AI", tech: "Хэрэглэх тусам илүү оновчтой — худал дохио буурна" }
         ],
         terminal: {
-          load: "YOLO11m-pose модел амжилттай ачаалагдлаа.",
-          conn: "Camera_01-д холбогдож байна... [OK]",
-          proc: "Фрейм боловсруулалт @ 12ms хоцролттой...",
-          detect: "Subject_ID_84 илрүүлж, дагаж байна.",
-          alert: "ALERT CRITICAL: Хулгайн үйлдэл илэрлээ.",
-          trigger: "TRIGGER: WebSocket -> frontend_client руу илгээв",
-          save: "SAVE: Видео файлыг хадгалж байна"
+          load: "AI систем ачаалагдлаа — дэлгүүрийг хамгаалахад бэлэн.",
+          conn: "Камер холбогдлоо: Үүдний камер... [OK]",
+          proc: "Хяналт явагдаж байна...",
+          detect: "Үнэтэй барааны тавиур дээр хүн илэрлээ.",
+          alert: "АНХААРУУЛГА: Бараа нуух сэжигтэй үйлдэл илэрлээ.",
+          trigger: "Мэдэгдэл дэлгүүрийн менежер рүү илгээгдлээ.",
+          save: "Зөрчлийн зураг хадгалагдлаа."
         }
+    },
+    pricing: {
+      badge: "Энгийн үнэ",
+      title: "БҮХИЙ Л",
+      titleHighlight: "ДЭЛГҮҮРТ ТОХИРНО",
+      subtitle: "Үнэгүй эхэлж, бэлэн болмогц шилжээрэй. Нуугдсан төлбөргүй.",
+      plans: [
+        {
+          name: "Starter",
+          price: "Үнэгүй",
+          period: "",
+          desc: "Жижиг дэлгүүрт зориулсан",
+          features: ["1 камер", "Үндсэн мэдэгдэл", "7 хоногийн түүх", "Имэйл дэмжлэг"],
+          cta: "Үнэгүй эхлэх",
+          highlighted: false
+        },
+        {
+          name: "Business",
+          price: "₮49,000",
+          period: "/камер/сар",
+          desc: "Өсөж буй худалдааны бизнест",
+          features: ["Хязгааргүй камер", "Утсанд шууд мэдэгдэл", "30 хоногийн түүх", "Өөрөө суралцдаг AI", "Долоо хоногийн тайлан", "Тэргүүлэх дэмжлэг"],
+          cta: "14 хоног туршиж үзэх",
+          highlighted: true
+        },
+        {
+          name: "Enterprise",
+          price: "Тохиролцоно",
+          period: "",
+          desc: "Сүлжээ дэлгүүр, томоохон бизнест",
+          features: ["Олон салбарын самбар", "Дотоод сервер сонголт", "AI тусгай тохируулга", "Хариуцсан менежер", "SLA баталгаа", "API хандалт"],
+          cta: "Холбогдох",
+          highlighted: false
+        }
+      ]
     },
     contact: {
       title: "ХОЛБОО БАРИХ",
-      desc: "Системийн талаар асуух зүйл болон хамтран ажиллах санал байвал бидэнтэй холбогдоорой. Бид 24 цагийн дотор хариу өгөх болно.",
-      form: { name: "Нэр", email: "Имэйл хаяг", sub: "Гарчиг", msg: "Таны зурвас", send: "ЗУРВАС ИЛГЭЭХ", sending: "ИЛГЭЭЖ БАЙНА..." }
+      desc: "Суулгалт, үнэ, хамтын ажиллагааны талаар асууж болно. Ажлын цагаар 2 цагийн дотор хариу өгнө.",
+      form: { name: "Нэр", email: "Имэйл хаяг", sub: "Гарчиг", msg: "Бид яаж тусалж чадах вэ?", send: "ЗУРВАС ИЛГЭЭХ", sending: "ИЛГЭЭЖ БАЙНА..." },
+      phone: "+976 8810-8766",
+      email: "info@chipmo.mn",
+      location: "Улаанбаатар, Монгол"
     },
     about: {
-      mission: "Бидний зорилго",
-      title: "АЮУЛГҮЙ БАЙДЛЫН ИРЭЭДҮЙ",
-      desc: "Security.AI нь жижиглэн худалдааны салбарт тулгарч буй алдагдал, хулгайн асуудлыг хиймэл оюуны тусламжтай шийдвэрлэх зорилготой.",
-      stat1: "Илрүүлэлтийн нарийвчлал",
-      stat2: "Боловсруулалтын хурд"
+      mission: "Бид яагаад үүнийг бүтээсэн бэ?",
+      title: "АЛЬ Ч ДЭЛГҮҮР УХААЛАГ ХАМГААЛАЛТТАЙ БАЙХ ЁСТОЙ",
+      desc: "Монголын жижиглэн худалдаачид жил бүр тэрбумаар хулгайд алддаг. Ихэнх нь өндөр үнэтэй хамгаалалтын систем авах боломжгүй. Бид Chipmo-г бүх дэлгүүрт — жижиг лангуунаас том сүлжээ дэлгүүр хүртэл — хүртээмжтэй болгохоор бүтээсэн.",
+      stat1: "Хулгай буурсан",
+      stat2: "Мэдэгдлийн хурд"
+    },
+    testimonials: {
+      badge: "Харилцагчдын сэтгэгдэл",
+      title: "МАНАЙ",
+      titleHighlight: "ХАРИЛЦАГЧИД",
+      items: [
+        { name: "Б. Батбаяр", role: "Номин супермаркет, Менежер", text: "Chipmo суулгаснаас хойш бараа алдагдал мэдэгдэхүйц буурсан. Ялангуяа шөнийн ээлжинд AI маш сайн ажиллаж байна." },
+        { name: "Д. Оюунчимэг", role: "CU convenience store, Эзэн", text: "Өмнө нь камерын бичлэг шалгахад л цаг үрдэг байсан. Одоо Telegram-аар шууд мэдэгдэл ирдэг болсон нь маш тохиромжтой." },
+        { name: "Г. Эрдэнэбат", role: "Techzone electronics, Захирал", text: "3 салбартаа суулгасан. Нэг самбараас бүгдийг хянадаг нь хамгийн давуу тал. AI өөрөө суралцдаг нь гайхалтай." }
+      ]
+    },
+    faq: {
+      badge: "Түгээмэл асуултууд",
+      title: "ТҮГЭЭМЭЛ",
+      titleHighlight: "АСУУЛТУУД",
+      items: [
+        { q: "Ямар камертай ажилладаг вэ?", a: "Chipmo аль ч IP камертай ажиллана — RTSP, MJPEG, Axis, Hikvision, Dahua, USB вэбкам. Таны одоо байгаа камерууд ажиллана." },
+        { q: "Суулгахад хэр удаан вэ?", a: "Ойролцоогоор 15 минут. Камераа холбоход л AI таны дэлгүүрийн нөхцөлд хэдэн цагийн дотор суралцаж эхэлнэ." },
+        { q: "Интернэт унтарвал яах вэ?", a: "Chipmo дотооддоо бичлэг хийсээр байна. Интернэт сэргэмэгц мэдэгдлүүд илгээгдэнэ." },
+        { q: "Илрүүлэлт хэр нарийвчлалтай вэ?", a: "Манай AI таны санал хүсэлтээс суралцаж, хуурамч дохиог багасгадаг. Ихэнх дэлгүүр эхний сард хулгайг 60%-иар бууруулсан." },
+        { q: "Видео өгөгдөл аюулгүй юу?", a: "Тийм. Бүх мэдээлэл шифрлэгдсэн бөгөөд та cloud эсвэл дотоод сервер сонгож болно. Бид таны мэдээллийг хэзээ ч хуваалцдаггүй." }
+      ]
     }
   }
 };
@@ -137,6 +260,7 @@ const itemVariants = {
 export default function Landing() {
   const [lang, setLang] = useState('mn');
   const [showTopBtn, setShowTopBtn] = useState(false);
+  const [mobileMenu, setMobileMenu] = useState(false);
   const t = content[lang];
 
   // --- Scroll Progress & Button Visibility ---
@@ -149,16 +273,6 @@ export default function Landing() {
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
-  // --- Live Accuracy State ---
-  const [liveAccuracy, setLiveAccuracy] = useState("99.2");
-  useEffect(() => {
-    const interval = setInterval(() => {
-      const newAcc = (Math.random() * (99.9 - 98.0) + 98.0).toFixed(1);
-      setLiveAccuracy(newAcc);
-    }, 2000);
-    return () => clearInterval(interval);
-  }, []);
-
   // --- Form Logic ---
   const [formData, setFormData] = useState({ name: '', email: '', subject: '', message: '' });
   const [loading, setLoading] = useState(false);
@@ -169,20 +283,12 @@ export default function Landing() {
     e.preventDefault();
     setLoading(true);
     try {
-      const response = await fetch('http://localhost:8000/api/contact', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
-      });
-      if (response.ok) {
-        alert(lang === 'mn' ? "Зурвас амжилттай илгээгдлээ!" : "Message sent successfully!");
-        setFormData({ name: '', email: '', subject: '', message: '' });
-      } else {
-        alert("Error sending message.");
-      }
+      await sendContactForm(formData);
+      alert(lang === 'mn' ? "Зурвас амжилттай илгээгдлээ!" : "Message sent successfully!");
+      setFormData({ name: '', email: '', subject: '', message: '' });
     } catch (error) {
       console.error("Error:", error);
-      alert("Could not connect to the server.");
+      alert(lang === 'mn' ? "Зурвас илгээхэд алдаа гарлаа." : "Error sending message.");
     } finally {
       setLoading(false);
     }
@@ -248,29 +354,67 @@ export default function Landing() {
               </div>
             </div>
             <div className="flex flex-col justify-center leading-none">
-              <h1 className="text-2xl font-black tracking-tighter text-white uppercase italic flex items-center">
-                SECURITY<span className="text-red-600 group-hover:text-red-400 transition-colors ml-0.5">.AI</span>
+              <h1 className="text-2xl font-black tracking-tighter text-white uppercase flex items-center">
+                CHIPMO<span className="text-red-600 group-hover:text-red-400 transition-colors ml-0.5">.AI</span>
               </h1>
-              <span className="text-[7px] font-mono text-slate-500 tracking-[0.3em] uppercase mt-1">Neural Node V11.0</span>
+              <span className="text-[7px] font-mono text-slate-500 tracking-[0.3em] uppercase mt-1">Smart Loss Prevention</span>
             </div>
           </motion.div>
 
           <div className="hidden md:flex gap-8 text-[10px] font-bold uppercase tracking-widest text-slate-400">
-            {['features', 'tech', 'about', 'contact'].map((item) => (
+            {['features', 'pricing', 'about', 'contact'].map((item) => (
               <a key={item} href={`#${item}`} onClick={(e) => scrollToSection(e, item)} className="hover:text-white transition-colors">{t.nav[item]}</a>
             ))}
           </div>
 
-          <div className="flex items-center gap-4">
+          <div className="hidden md:flex items-center gap-4">
             <button onClick={toggleLang} className="flex items-center gap-2 px-3 py-1.5 rounded-full border border-white/10 bg-white/5 hover:bg-white/10 transition-all text-[10px] font-black font-mono tracking-tighter">
               <Globe size={14} className="text-red-500" />
               {lang === 'en' ? 'MN' : 'ENG'}
             </button>
-            <Link to="/login" className="px-6 py-2 bg-white text-black rounded-full font-bold text-xs uppercase hover:scale-105 transition-transform">
+            <Link to="/login" className="px-5 py-2 border border-slate-600 text-slate-300 rounded-full font-bold text-xs uppercase hover:bg-slate-800 transition-all">
               {t.nav.login}
             </Link>
+            <Link to="/register" className="px-5 py-2 bg-red-600 text-white rounded-full font-bold text-xs uppercase hover:bg-red-500 transition-all">
+              {t.nav.register}
+            </Link>
           </div>
+
+          {/* Mobile hamburger */}
+          <button onClick={() => setMobileMenu(!mobileMenu)} className="md:hidden p-2 text-slate-400 hover:text-white">
+            {mobileMenu ? <X size={24} /> : <Menu size={24} />}
+          </button>
         </div>
+
+        {/* Mobile Menu Dropdown */}
+        <AnimatePresence>
+          {mobileMenu && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              className="md:hidden overflow-hidden"
+            >
+              <div className="py-4 px-6 space-y-3 border-t border-white/5">
+                {['features', 'pricing', 'about', 'contact'].map((item) => (
+                  <a key={item} href={`#${item}`} onClick={(e) => { scrollToSection(e, item); setMobileMenu(false); }}
+                     className="block text-sm font-bold uppercase tracking-wider text-slate-400 hover:text-white py-2">{t.nav[item]}</a>
+                ))}
+                <div className="flex gap-3 pt-3 border-t border-white/10">
+                  <button onClick={() => { toggleLang(); setMobileMenu(false); }} className="flex items-center gap-2 px-3 py-2 rounded-full border border-white/10 bg-white/5 text-xs font-bold">
+                    <Globe size={14} className="text-red-500" /> {lang === 'en' ? 'MN' : 'ENG'}
+                  </button>
+                  <Link to="/login" onClick={() => setMobileMenu(false)} className="flex-1 text-center py-2 border border-slate-600 text-slate-300 rounded-full font-bold text-xs uppercase">
+                    {t.nav.login}
+                  </Link>
+                  <Link to="/register" onClick={() => setMobileMenu(false)} className="flex-1 text-center py-2 bg-red-600 text-white rounded-full font-bold text-xs uppercase">
+                    {t.nav.register}
+                  </Link>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </nav>
 
       {/* Hero Section */}
@@ -286,23 +430,28 @@ export default function Landing() {
           </motion.h2>
           <motion.p variants={itemVariants} className="text-slate-400 text-lg max-w-xl font-light leading-relaxed">{t.hero.desc}</motion.p>
           <motion.div variants={itemVariants} className="flex flex-wrap gap-4 pt-4">
-            <Link to="/login" className="bg-red-600 text-white px-8 py-4 rounded-2xl font-black text-lg hover:shadow-[0_0_30px_rgba(239,68,68,0.3)] transition-all">{t.hero.btnInit}</Link>
-            <button className="px-8 py-4 rounded-2xl font-bold text-lg text-slate-300 border border-slate-700 hover:bg-slate-800">{t.hero.btnDoc}</button>
+            <Link to="/register" className="bg-red-600 text-white px-8 py-4 rounded-2xl font-black text-lg hover:shadow-[0_0_30px_rgba(239,68,68,0.3)] transition-all">{t.hero.btnInit}</Link>
+            <a href="#tech" onClick={(e) => scrollToSection(e, 'tech')} className="px-8 py-4 rounded-2xl font-bold text-lg text-slate-300 border border-slate-700 hover:bg-slate-800 transition-all">{t.hero.btnDoc}</a>
           </motion.div>
         </motion.div>
 
         <div className="relative group">
           <div className="absolute inset-0 bg-gradient-to-tr from-red-500/20 to-blue-500/20 blur-3xl -z-10" />
           <div className="bg-[#0f172a]/80 backdrop-blur-2xl rounded-[3rem] border border-white/5 overflow-hidden ring-1 ring-white/10 shadow-2xl relative">
-            <div className="p-4 border-b border-white/5 bg-slate-900/50 flex items-center gap-2 relative z-20">
-              <Activity size={12} className="text-red-500 animate-pulse" />
-              <span className="text-[9px] font-mono text-slate-500 uppercase tracking-widest">Cam_01_AI_Neural_Node</span>
+            <div className="p-4 border-b border-white/5 bg-slate-900/50 flex items-center justify-between relative z-20">
+              <div className="flex items-center gap-2">
+                <Activity size={12} className="text-red-500 animate-pulse" />
+                <span className="text-[9px] font-mono text-slate-500 uppercase tracking-widest">CAM_01 — Үүдний камер</span>
+              </div>
+              <span className="text-[8px] font-mono text-slate-600">2026/04/14 15:42:08</span>
             </div>
             <div className="relative h-[400px] overflow-hidden">
-              <img src="https://images.unsplash.com/photo-1557597774-9d273605dfa9?q=80&w=1000" className="w-full h-full object-cover opacity-60 grayscale group-hover:grayscale-0 transition-all duration-700" alt="Security" />
+              <img src="https://images.unsplash.com/photo-1764083079459-ddb9a615d50e?q=80&w=1000&auto=format&fit=crop" className="w-full h-full object-cover opacity-70 transition-all duration-700" alt="Store monitoring" />
               <motion.div animate={{ top: ["0%", "100%", "0%"] }} transition={{ duration: 4, repeat: Infinity, ease: "linear" }} className="absolute left-0 w-full h-[2px] bg-red-500 shadow-[0_0_20px_rgba(239,68,68,0.8)] z-10" />
-              <motion.div animate={{ scale: [1, 1.05, 1], opacity: [0.6, 1, 0.6] }} transition={{ repeat: Infinity, duration: 2 }} className="absolute top-[20%] left-[30%] border-2 border-red-500 w-32 h-48 bg-red-500/10 z-10">
-                <span className="bg-red-500 text-white text-[8px] px-1 font-mono uppercase animate-pulse">Detected_Pose: 94%</span>
+              {/* Detection box on person */}
+              <motion.div animate={{ scale: [1, 1.03, 1], opacity: [0.7, 1, 0.7] }} transition={{ repeat: Infinity, duration: 2 }} className="absolute top-[15%] left-[35%] border-2 border-red-500 w-28 h-52 bg-red-500/10 z-10">
+                <span className="bg-red-600 text-white text-[8px] px-1.5 py-0.5 font-mono uppercase animate-pulse">Сэжигтэй: 87%</span>
+                <span className="absolute bottom-0 left-0 bg-black/60 text-amber-400 text-[7px] px-1 py-0.5 font-mono">Бараа нуух</span>
               </motion.div>
             </div>
           </div>
@@ -325,6 +474,46 @@ export default function Landing() {
       {/* Technology Section */}
       <TechnologySection t={t.techSection} />
 
+      {/* Pricing Section */}
+      <PricingSection t={t.pricing} lang={lang} />
+
+      {/* Demo Section */}
+      <section id="demo" className="py-32 border-t border-white/5">
+        <div className="max-w-[1000px] mx-auto px-6 text-center">
+          <motion.div initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}>
+            <span className="text-red-500 font-mono text-xs tracking-[0.3em] uppercase font-bold">
+              {lang === 'mn' ? 'Хэрхэн ажилладгийг харна уу' : 'See It In Action'}
+            </span>
+            <h2 className="text-5xl font-black tracking-tighter mt-4 mb-6">
+              {lang === 'mn' ? 'CHIPMO' : 'CHIPMO'} <span className="text-red-500">{lang === 'mn' ? 'АЖИЛЛАГАА' : 'IN ACTION'}</span>
+            </h2>
+            <p className="text-slate-400 text-lg font-light mb-12 max-w-xl mx-auto">
+              {lang === 'mn'
+                ? 'Бодит дэлгүүрт AI хэрхэн сэжигтэй үйлдлийг илрүүлж, мэдэгдэл илгээдгийг харна уу.'
+                : 'Watch how Chipmo AI detects suspicious activity in a real store and sends instant alerts.'}
+            </p>
+          </motion.div>
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            whileInView={{ opacity: 1, scale: 1 }}
+            viewport={{ once: true }}
+            className="relative aspect-video rounded-[2rem] overflow-hidden border border-white/10 bg-slate-900/60 shadow-2xl"
+          >
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-6 bg-gradient-to-br from-slate-900/90 to-[#0f172a]/90">
+              <div className="p-5 rounded-full bg-red-500/20 border border-red-500/40">
+                <svg className="w-12 h-12 text-red-500" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+              </div>
+              <p className="text-slate-400 text-sm font-mono uppercase tracking-widest">
+                {lang === 'mn' ? 'Демо видео удахгүй...' : 'Demo video coming soon...'}
+              </p>
+            </div>
+          </motion.div>
+        </div>
+      </section>
+
+      {/* Testimonials Section */}
+      <TestimonialsSection t={t.testimonials} />
+
       {/* About Section */}
       <section id="about" className="py-32 border-t border-white/5">
         <div className="max-w-[1400px] mx-auto px-6 grid lg:grid-cols-2 gap-20 items-center">
@@ -333,15 +522,29 @@ export default function Landing() {
             <h2 className="text-5xl font-black tracking-tighter mb-8">{t.about.title}</h2>
             <p className="text-slate-400 text-lg font-light leading-relaxed mb-10">{t.about.desc}</p>
             <div className="grid grid-cols-2 gap-6">
-              <div><h4 className="text-red-500 font-mono font-bold text-4xl">{liveAccuracy}%</h4><p className="text-slate-500 text-[10px] uppercase font-mono tracking-widest">{t.about.stat1}</p></div>
-              <div><h4 className="text-white font-mono font-bold text-4xl">&lt; 12ms</h4><p className="text-slate-500 text-[10px] uppercase font-mono tracking-widest">{t.about.stat2}</p></div>
+              <div><h4 className="text-red-500 font-mono font-bold text-4xl">~60%</h4><p className="text-slate-500 text-[10px] uppercase font-mono tracking-widest">{t.about.stat1}</p></div>
+              <div><h4 className="text-white font-mono font-bold text-4xl">&lt; 3{lang === 'mn' ? ' сек' : 's'}</h4><p className="text-slate-500 text-[10px] uppercase font-mono tracking-widest">{t.about.stat2}</p></div>
             </div>
           </motion.div>
-          <div className="rounded-[3rem] overflow-hidden border border-white/10 aspect-video grayscale hover:grayscale-0 transition-all duration-1000">
-            <img src="https://images.unsplash.com/photo-1550751827-4bd374c3f58b?q=80&w=1000" className="w-full h-full object-cover" alt="AI Core" />
+          <div className="rounded-[3rem] overflow-hidden border border-white/10 aspect-video">
+            <div className="w-full h-full bg-gradient-to-br from-slate-900 to-[#0f172a] flex flex-col items-center justify-center gap-6 p-10">
+              <div className="p-4 bg-red-500/10 rounded-2xl border border-red-500/30">
+                <ShieldCheck size={48} className="text-red-500" />
+              </div>
+              <h3 className="text-2xl font-black text-white uppercase tracking-tight">Chipmo.AI</h3>
+              <p className="text-slate-500 text-sm font-mono text-center">Smart Loss Prevention<br/>for Every Store</p>
+              <div className="flex gap-4 mt-2">
+                <div className="px-3 py-1.5 rounded-lg bg-slate-800/60 border border-slate-700/50 text-[10px] font-mono text-slate-400">AI Detection</div>
+                <div className="px-3 py-1.5 rounded-lg bg-slate-800/60 border border-slate-700/50 text-[10px] font-mono text-slate-400">Auto-learning</div>
+                <div className="px-3 py-1.5 rounded-lg bg-slate-800/60 border border-slate-700/50 text-[10px] font-mono text-slate-400">Multi-store</div>
+              </div>
+            </div>
           </div>
         </div>
       </section>
+
+      {/* FAQ Section */}
+      <FAQSection t={t.faq} />
 
       {/* Contact Section */}
       <section id="contact" className="py-32 bg-slate-900/20 border-t border-white/5">
@@ -352,8 +555,9 @@ export default function Landing() {
               <h2 className="text-5xl font-black mb-6 tracking-tighter italic">{t.contact.title}</h2>
               <p className="text-slate-400 mb-12 font-light text-lg">{t.contact.desc}</p>
               <div className="space-y-6">
-                <ContactInfo icon={<Activity size={20} />} label="Email" value="contact@security.ai" />
-                <ContactInfo icon={<ShieldCheck size={20} />} label="Location" value="Ulaanbaatar, Mongolia" />
+                <ContactInfo icon={<Phone size={20} />} label={lang === 'mn' ? "Утас" : "Phone"} value={t.contact.phone} />
+                <ContactInfo icon={<Mail size={20} />} label="Email" value={t.contact.email} />
+                <ContactInfo icon={<MapPin size={20} />} label={lang === 'mn' ? "Хаяг" : "Location"} value={t.contact.location} />
               </div>
             </div>
             <form onSubmit={handleSubmit} className="space-y-5 relative z-10">
@@ -371,8 +575,15 @@ export default function Landing() {
         </div>
       </section>
 
-      <footer className="py-12 text-center opacity-40 font-mono text-[9px] uppercase tracking-[0.4em]">
-        © 2026 Security.AI - Global Neural Surveillance Network
+      <footer className="py-12 border-t border-white/5">
+        <div className="max-w-[1400px] mx-auto px-6 flex flex-col md:flex-row justify-between items-center gap-4">
+          <span className="opacity-40 font-mono text-[9px] uppercase tracking-[0.4em]">© 2026 Chipmo LLC</span>
+          <div className="flex gap-6 opacity-40 text-[9px] font-mono uppercase tracking-widest">
+            <a href="#features" onClick={(e) => scrollToSection(e, 'features')} className="hover:opacity-100 transition-opacity">{t.nav.features}</a>
+            <a href="#pricing" onClick={(e) => scrollToSection(e, 'pricing')} className="hover:opacity-100 transition-opacity">{t.nav.pricing}</a>
+            <a href="#contact" onClick={(e) => scrollToSection(e, 'contact')} className="hover:opacity-100 transition-opacity">{t.nav.contact}</a>
+          </div>
+        </div>
       </footer>
     </div>
   );
@@ -459,5 +670,167 @@ function TechRow({ title, tech }) {
       <h4 className="text-sm font-bold text-slate-300 mb-1">{title}</h4>
       <p className="text-red-400/90 font-mono text-sm">{tech}</p>
     </div>
+  );
+}
+
+function TestimonialsSection({ t }) {
+  return (
+    <section className="py-32 border-t border-white/5 bg-slate-900/10">
+      <div className="max-w-[1400px] mx-auto px-6">
+        <div className="text-center mb-20">
+          <motion.div initial={{ opacity: 0, scale: 0.9 }} whileInView={{ opacity: 1, scale: 1 }} viewport={{ once: true }} className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-slate-800/50 border border-slate-700 mb-6 uppercase tracking-widest text-xs font-mono">
+            <MessageSquareQuote size={14} className="text-emerald-400" /> {t.badge}
+          </motion.div>
+          <h2 className="text-4xl md:text-5xl font-black mb-6 uppercase tracking-tighter">
+            {t.title} <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-cyan-400">{t.titleHighlight}</span>
+          </h2>
+        </div>
+        <div className="grid md:grid-cols-3 gap-8">
+          {t.items.map((item, idx) => (
+            <motion.div
+              key={idx}
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ delay: idx * 0.1 }}
+              className="p-8 rounded-[2rem] bg-[#0f172a]/60 border border-slate-800/50 hover:border-slate-700 transition-all"
+            >
+              <div className="flex gap-1 mb-6">
+                {[...Array(5)].map((_, i) => (
+                  <Star key={i} size={16} className="text-amber-400 fill-amber-400" />
+                ))}
+              </div>
+              <p className="text-slate-300 text-sm leading-relaxed mb-8 font-light">"{item.text}"</p>
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-red-500 to-orange-500 flex items-center justify-center text-white font-black text-sm">
+                  {item.name[0]}
+                </div>
+                <div>
+                  <p className="text-sm font-bold text-white">{item.name}</p>
+                  <p className="text-[10px] text-slate-500 font-mono">{item.role}</p>
+                </div>
+              </div>
+            </motion.div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function FAQSection({ t }) {
+  const [openIdx, setOpenIdx] = useState(null);
+  return (
+    <section className="py-32 border-t border-white/5 bg-slate-900/10">
+      <div className="max-w-[800px] mx-auto px-6">
+        <div className="text-center mb-16">
+          <motion.div initial={{ opacity: 0, scale: 0.9 }} whileInView={{ opacity: 1, scale: 1 }} viewport={{ once: true }} className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-slate-800/50 border border-slate-700 mb-6 uppercase tracking-widest text-xs font-mono">
+            <HelpCircle size={14} className="text-purple-400" /> {t.badge}
+          </motion.div>
+          <h2 className="text-4xl md:text-5xl font-black mb-6 uppercase tracking-tighter">
+            {t.title} <span className="text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-400">{t.titleHighlight}</span>
+          </h2>
+        </div>
+        <div className="space-y-4">
+          {t.items.map((item, idx) => (
+            <motion.div
+              key={idx}
+              initial={{ opacity: 0, y: 10 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ delay: idx * 0.05 }}
+              className="rounded-2xl border border-slate-800/50 bg-[#0f172a]/60 overflow-hidden"
+            >
+              <button
+                onClick={() => setOpenIdx(openIdx === idx ? null : idx)}
+                className="w-full px-6 py-5 flex items-center justify-between text-left hover:bg-slate-800/30 transition-all"
+              >
+                <span className="text-sm font-bold text-white pr-4">{item.q}</span>
+                <ChevronDown size={18} className={`text-slate-500 shrink-0 transition-transform ${openIdx === idx ? 'rotate-180' : ''}`} />
+              </button>
+              <AnimatePresence>
+                {openIdx === idx && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.2 }}
+                    className="overflow-hidden"
+                  >
+                    <p className="px-6 pb-5 text-sm text-slate-400 leading-relaxed">{item.a}</p>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </motion.div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function PricingSection({ t, lang }) {
+  return (
+    <section id="pricing" className="py-32 border-t border-white/5 bg-slate-900/10">
+      <div className="max-w-[1400px] mx-auto px-6">
+        <div className="text-center mb-20">
+          <motion.div initial={{ opacity: 0, scale: 0.9 }} whileInView={{ opacity: 1, scale: 1 }} viewport={{ once: true }} className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-slate-800/50 border border-slate-700 mb-6 uppercase tracking-widest text-xs font-mono">
+            <Star size={14} className="text-amber-400" /> {t.badge}
+          </motion.div>
+          <h2 className="text-4xl md:text-5xl font-black mb-6 uppercase tracking-tighter">
+            {t.title} <span className="text-transparent bg-clip-text bg-gradient-to-r from-red-500 to-amber-500">{t.titleHighlight}</span>
+          </h2>
+          <p className="text-slate-400 max-w-2xl mx-auto text-lg font-light">{t.subtitle}</p>
+        </div>
+
+        <div className="grid md:grid-cols-3 gap-8 max-w-5xl mx-auto">
+          {t.plans.map((plan, idx) => (
+            <motion.div
+              key={idx}
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ delay: idx * 0.1 }}
+              className={`relative p-8 rounded-[2.5rem] border transition-all ${
+                plan.highlighted
+                  ? 'bg-gradient-to-b from-red-600/10 to-[#0f172a]/80 border-red-500/40 shadow-[0_0_40px_rgba(239,68,68,0.15)]'
+                  : 'bg-[#0f172a]/60 border-slate-800/50 hover:border-slate-700'
+              }`}
+            >
+              {plan.highlighted && (
+                <div className="absolute -top-4 left-1/2 -translate-x-1/2 px-4 py-1 bg-red-600 rounded-full text-[10px] font-black uppercase tracking-widest text-white">
+                  {lang === 'mn' ? 'Хамгийн түгээмэл' : 'Most Popular'}
+                </div>
+              )}
+              <h3 className="text-lg font-bold text-slate-300 mb-2">{plan.name}</h3>
+              <div className="flex items-baseline gap-1 mb-2">
+                <span className="text-4xl font-black text-white">{plan.price}</span>
+                {plan.period && <span className="text-sm text-slate-500">{plan.period}</span>}
+              </div>
+              <p className="text-sm text-slate-500 mb-8">{plan.desc}</p>
+              <ul className="space-y-3 mb-10">
+                {plan.features.map((f, i) => (
+                  <li key={i} className="flex items-center gap-3 text-sm text-slate-300">
+                    <Check size={16} className={plan.highlighted ? 'text-red-400' : 'text-slate-600'} />
+                    {f}
+                  </li>
+                ))}
+              </ul>
+              <Link
+                to={plan.highlighted ? '/register' : idx === 2 ? '#contact' : '/register'}
+                onClick={idx === 2 ? (e) => { e.preventDefault(); document.getElementById('contact')?.scrollIntoView({ behavior: 'smooth' }); } : undefined}
+                className={`block text-center w-full py-4 rounded-2xl font-bold text-sm uppercase tracking-wider transition-all ${
+                  plan.highlighted
+                    ? 'bg-red-600 text-white hover:bg-red-500 shadow-lg'
+                    : 'border border-slate-700 text-slate-300 hover:bg-slate-800'
+                }`}
+              >
+                {plan.cta}
+              </Link>
+            </motion.div>
+          ))}
+        </div>
+      </div>
+    </section>
   );
 }

@@ -1,0 +1,19 @@
+{
+  "name": "Chipmo AI - Ухаалаг хулгай илрүүлэгч",
+  "short_name": "Chipmo",
+  "description": "AI-д суурилсан дэлгүүрийн хулгай илрүүлэх систем",
+  "start_url": "/dashboard",
+  "display": "standalone",
+  "background_color": "#05080d",
+  "theme_color": "#dc2626",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["security", "business"]
+}

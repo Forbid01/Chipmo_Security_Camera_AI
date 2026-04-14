@@ -5,7 +5,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   Building2, Video, Plus, Trash2, Edit3, Users, ShieldCheck,
   CheckCircle2, Save, AlertCircle, Loader2, BarChart3, Bell,
-  Eye, EyeOff, X, LogOut, ChevronDown
+  Eye, EyeOff, X, LogOut, ChevronDown, ArrowLeft
 } from 'lucide-react';
 
 import {
@@ -586,12 +586,20 @@ const DashboardAdmin = () => {
       <div className="max-w-7xl mx-auto relative z-10">
         {/* HEADER */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-6">
-          <div>
-            <h1 className="text-3xl md:text-4xl font-black italic tracking-tighter text-white uppercase flex items-center gap-3">
-              Admin<span className="text-red-600">.Control</span>
-              {loading && <Loader2 className="animate-spin text-slate-500" size={22} />}
-            </h1>
-            <p className="text-[10px] font-mono text-slate-500 tracking-[0.3em] uppercase mt-2">System Management Panel v2.0</p>
+          <div className="flex items-center gap-4">
+            <button
+              onClick={() => navigate('/dashboard')}
+              className="p-2.5 rounded-xl border border-slate-800 hover:bg-slate-800/50 transition-all"
+            >
+              <ArrowLeft size={18} />
+            </button>
+            <div>
+              <h1 className="text-3xl md:text-4xl font-black italic tracking-tighter text-white uppercase flex items-center gap-3">
+                Admin<span className="text-red-600">.Control</span>
+                {loading && <Loader2 className="animate-spin text-slate-500" size={22} />}
+              </h1>
+              <p className="text-[10px] font-mono text-slate-500 tracking-[0.3em] uppercase mt-2">Системийн удирдлага</p>
+            </div>
           </div>
 
           <button onClick={handleLogout}

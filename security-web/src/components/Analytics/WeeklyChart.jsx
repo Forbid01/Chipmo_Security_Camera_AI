@@ -5,7 +5,7 @@ export const WeeklyChart = ({ data, onBarClick, selectedDay, onClearFilter }) =>
   <div className="bg-[#0f172a]/60 backdrop-blur-xl p-6 rounded-[2.5rem] border border-slate-800/50 shadow-xl relative">
     <div className="flex justify-between items-center mb-6">
       <h2 className="flex items-center gap-2 font-semibold text-slate-400 uppercase text-xs tracking-widest font-mono">
-        <BarChart3 size={18} className="text-emerald-500" /> Weekly Incident Trends
+        <BarChart3 size={18} className="text-emerald-500" /> Долоо хоногийн зөрчил
       </h2>
       {/* Шүүлтүүрийг арилгах товч */}
       {selectedDay && (
@@ -13,7 +13,7 @@ export const WeeklyChart = ({ data, onBarClick, selectedDay, onClearFilter }) =>
           onClick={onClearFilter}
           className="flex items-center gap-1 text-[10px] bg-red-500/10 text-red-500 px-2 py-1 rounded-full border border-red-500/20 hover:bg-red-500/20 transition-all"
         >
-          <XCircle size={12} /> {selectedDay} - Clear Filter
+          <XCircle size={12} /> {selectedDay} - Арилгах
         </button>
       )}
     </div>

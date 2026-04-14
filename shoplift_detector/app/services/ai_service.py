@@ -97,7 +97,21 @@ class ShopliftDetector:
             finally:
                 loop.close()
 
-            # Queue for Telegram notification
+            # Telegram мэдэгдэл илгээх
+            import asyncio
+            try:
+                tg_loop = asyncio.new_event_loop()
+                tg_loop.run_until_complete(
+                    self._send_telegram_alert(
+                        store_id=store_id, camera_id=camera_id,
+                        reason=reason, image_path=img_path, score=score,
+                    )
+                )
+                tg_loop.close()
+            except Exception as tg_err:
+                logger.error(f"Telegram notification error: {tg_err}")
+
+            # Queue for frontend
             from app.core.state import alert_queue
             alert_queue.put({
                 "id": yolo_id,
@@ -107,6 +121,37 @@ class ShopliftDetector:
             })
         except Exception as e:
             logger.error(f"Alert save error: {e}")
+
+    async def _send_telegram_alert(self, store_id, camera_id, reason, image_path, score):
+        """Дэлгүүрийн telegram_chat_id руу мэдэгдэл илгээх."""
+        from app.services.telegram_notifier import telegram_notifier
+        if not telegram_notifier.is_configured:
+            return
+
+        from app.db.session import AsyncSessionLocal
+        from app.db.repository.stores import StoreRepository
+
+        async with AsyncSessionLocal() as db:
+            store_repo = StoreRepository(db)
+            store = await store_repo.get_by_id(store_id) if store_id else None
+
+        if not store or not store.get("telegram_chat_id"):
+            return
+
+        # Камерын нэр авах
+        camera_name = f"Camera #{camera_id}" if camera_id else "Unknown"
+        cam_state = camera_manager._cameras.get(camera_id)
+        if cam_state:
+            camera_name = cam_state.name
+
+        await telegram_notifier.send_alert(
+            chat_id=store["telegram_chat_id"],
+            store_name=store["name"],
+            camera_name=camera_name,
+            reason=reason,
+            image_path=image_path,
+            score=score,
+        )
 
     async def _save_alert_to_db(self, person_id, image_path, reason,
                                  camera_id=None, store_id=None, score=None):

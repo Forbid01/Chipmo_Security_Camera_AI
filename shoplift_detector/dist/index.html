@@ -1,14 +1,34 @@
 <!doctype html>
-<html lang="en">
+<html lang="mn">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="manifest" href="/manifest.json" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>security-web</title>
-    <script type="module" crossorigin src="/assets/index-BsuWpsfl.js"></script>
-    <link rel="stylesheet" crossorigin href="/assets/index-28bgLQBg.css">
+    <meta name="theme-color" content="#dc2626" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <title>Chipmo — AI хулгай илрүүлэгч | Дэлгүүрийн ухаалаг хамгаалалт</title>
+    <meta name="description" content="Chipmo таны камеруудыг ухаалаг хулгай илрүүлэгч болгоно. Сэжигтэй үйлдэл илэрмэгц Telegram-д шууд мэдэгдэл ирнэ. Үнэгүй туршиж үзээрэй." />
+    <meta name="keywords" content="chipmo, хулгай илрүүлэх, дэлгүүрийн хамгаалалт, AI камер, хяналтын камер, loss prevention, shoplifting detection" />
+    <meta property="og:title" content="Chipmo — AI хулгай илрүүлэгч" />
+    <meta property="og:description" content="Таны камеруудыг ухаалаг хулгай илрүүлэгч болгоно. Сэжигтэй үйлдэл илэрмэгц утсанд шууд мэдэгдэл." />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://chipmo.mn" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Chipmo — AI хулгай илрүүлэгч" />
+    <meta name="twitter:description" content="Дэлгүүрийн ухаалаг хамгаалалт. Үнэгүй туршиж үзээрэй." />
+    <script type="module" crossorigin src="/assets/index-DlaYf6hB.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-BasPI1m1.css">
   </head>
   <body>
     <div id="root"></div>
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js').catch(() => {});
+        });
+      }
+    </script>
   </body>
 </html>

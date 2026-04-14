@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../services/api'; 
-import { Lock, Mail, User, Phone, Loader2, ArrowLeft, UserPlus } from 'lucide-react';
+import { Lock, Mail, User, Phone, Loader2, ArrowLeft, UserPlus, Building2 } from 'lucide-react';
 import { motion, useMotionValue, useSpring, useTransform } from 'framer-motion';
 
 export default function Register() {
@@ -11,7 +11,8 @@ export default function Register() {
     email: '',
     phone_number: '',
     password: '',
-    full_name: ''
+    full_name: '',
+    org_name: ''
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -163,11 +164,12 @@ export default function Register() {
 
           <div className="space-y-3">
             {[
-              { name: 'full_name', placeholder: 'Full Name', icon: User, type: 'text' },
-              { name: 'username', placeholder: 'Username', icon: User, type: 'text', required: true },
-              { name: 'email', placeholder: 'Email Address', icon: Mail, type: 'email', required: true },
-              { name: 'phone_number', placeholder: 'Phone Number', icon: Phone, type: 'text' },
-              { name: 'password', placeholder: 'Password', icon: Lock, type: 'password', required: true },
+              { name: 'full_name', placeholder: 'Бүтэн нэр', icon: User, type: 'text' },
+              { name: 'username', placeholder: 'Хэрэглэгчийн нэр', icon: User, type: 'text', required: true },
+              { name: 'email', placeholder: 'Имэйл хаяг', icon: Mail, type: 'email', required: true },
+              { name: 'phone_number', placeholder: 'Утасны дугаар', icon: Phone, type: 'text' },
+              { name: 'org_name', placeholder: 'Байгууллагын нэр', icon: Building2, type: 'text', required: true },
+              { name: 'password', placeholder: 'Нууц үг', icon: Lock, type: 'password', required: true },
             ].map((field) => (
               <div key={field.name} className="group relative">
                 <field.icon className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-600 group-focus-within:text-blue-500/70 transition-colors" size={16} />
@@ -187,20 +189,20 @@ export default function Register() {
             disabled={loading}
             className="w-full bg-blue-600 mt-8 py-4 rounded-2xl font-black text-white uppercase tracking-[0.2em] text-xs hover:bg-blue-500 active:scale-[0.97] transition-all duration-300 shadow-xl shadow-blue-900/30 disabled:opacity-50 flex items-center justify-center gap-3"
           >
-            {loading ? <Loader2 className="animate-spin" size={18} /> : "Registration"}
+            {loading ? <Loader2 className="animate-spin" size={18} /> : "Бүртгүүлэх"}
           </button>
 
           <div className="flex flex-col items-center justify-center mt-8">
             <div className="flex items-center gap-3 bg-slate-950/80 px-5 py-2.5 rounded-full border border-slate-800/80 hover:border-slate-700 transition-colors cursor-default">
               <span className="text-slate-500 text-[10px] uppercase tracking-widest font-bold">
-                Already registered?
+                Бүртгэлтэй юу?
               </span>
               <button
                 type="button"
                 onClick={() => navigate('/login')}
                 className="text-blue-500 hover:text-blue-400 font-black text-[10px] uppercase tracking-[0.15em] transition-all hover:translate-x-0.5"
               >
-                Sign In
+                Нэвтрэх
               </button>
             </div>
           </div>

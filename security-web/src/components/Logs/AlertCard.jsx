@@ -6,8 +6,8 @@ export const AlertCard = ({ alert, onSelect }) => {
   const [feedbackStatus, setFeedbackStatus] = useState(alert?.feedback_status || 'unreviewed');
   const [loading, setLoading] = useState(false);
 
-  const description = alert?.description || 'Suspicious activity detected';
-  const eventTime = alert?.event_time || 'Unknown time';
+  const description = alert?.description || 'Сэжигтэй үйлдэл илэрлээ';
+  const eventTime = alert?.event_time || 'Тодорхойгүй';
   const imageUrl = alert?.web_url;
   const videoUrl = alert?.video_url;
 
@@ -55,7 +55,7 @@ export const AlertCard = ({ alert, onSelect }) => {
                 {eventTime}
               </p>
               {alert?.confidence_score && (
-                <p className="text-[10px] text-slate-600">Score: {Math.round(alert.confidence_score)}</p>
+                <p className="text-[10px] text-slate-600">Оноо: {Math.round(alert.confidence_score)}</p>
               )}
             </div>
           </div>
@@ -76,12 +76,12 @@ export const AlertCard = ({ alert, onSelect }) => {
                 className="inline-flex items-center gap-2 rounded-full border border-slate-700 px-3 py-2 text-xs font-bold text-slate-200 transition-colors hover:border-slate-500 hover:text-white"
               >
                 <Image size={14} />
-                Snapshot
+                Зураг
               </a>
             ) : (
               <span className="inline-flex items-center gap-2 rounded-full border border-slate-800 px-3 py-2 text-xs font-bold text-slate-500">
                 <Image size={14} />
-                No Image
+                Зургүй
               </span>
             )}
 
@@ -92,7 +92,7 @@ export const AlertCard = ({ alert, onSelect }) => {
               className="inline-flex items-center gap-2 rounded-full bg-red-600 px-3 py-2 text-xs font-bold text-white transition-colors hover:bg-red-500 disabled:cursor-not-allowed disabled:bg-slate-800 disabled:text-slate-500"
             >
               <PlayCircle size={14} />
-              Review
+              Бичлэг
             </button>
 
             {/* AI Feedback buttons */}

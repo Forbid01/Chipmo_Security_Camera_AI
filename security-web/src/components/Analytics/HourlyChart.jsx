@@ -5,10 +5,10 @@ export const HourlyChart = ({ data, selectedHour, onHourClick, onClearHour }) =>
   <div className="bg-[#0f172a]/60 backdrop-blur-xl p-6 rounded-[2.5rem] border border-slate-800/50 shadow-xl relative">
     <div className="flex justify-between items-center mb-6">
       <h2 className="flex items-center gap-2 font-semibold text-slate-400 uppercase text-[10px] tracking-widest font-mono">
-        <Clock size={16} className="text-blue-500" /> Hourly Activity
+        <Clock size={16} className="text-blue-500" /> Цагийн идэвхжил
       </h2>
       {selectedHour !== null && (
-        <button onClick={onClearHour} className="text-[9px] text-red-500 uppercase font-bold px-2 py-1 bg-red-500/10 rounded-lg">Clear {selectedHour}:00</button>
+        <button onClick={onClearHour} className="text-[9px] text-red-500 uppercase font-bold px-2 py-1 bg-red-500/10 rounded-lg">Арилгах {selectedHour}:00</button>
       )}
     </div>
     <div className="h-48 w-full">
