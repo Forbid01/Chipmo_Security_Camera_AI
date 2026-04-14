@@ -56,7 +56,7 @@ class AuthService:
     @classmethod
     async def create_access_token(cls, data: dict):
         """JWT Token үүсгэх"""
-        return await create_access_token(data)
+        return create_access_token(data)
 
     @staticmethod
     async def get_current_user(token: str = Depends(oauth2_scheme)):
