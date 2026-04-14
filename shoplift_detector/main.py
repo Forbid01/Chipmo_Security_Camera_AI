@@ -476,6 +476,21 @@ if os.path.exists(dist_path):
     if os.path.exists(assets_path):
         app.mount("/assets", StaticFiles(directory=assets_path), name="assets")
 
+    def _serve_spa_path(request_path: str):
+        if request_path:
+            candidate = os.path.normpath(os.path.join(dist_path, request_path))
+            if candidate.startswith(dist_path) and os.path.isfile(candidate):
+                return FileResponse(candidate)
+
+        index_file = os.path.join(dist_path, "index.html")
+        if os.path.exists(index_file):
+            return FileResponse(index_file)
+        return JSONResponse(status_code=500, content={"error": "Frontend build not found"})
+
+    @app.get("/")
+    async def serve_react_root():
+        return _serve_spa_path("")
+
     @app.get("/{catchall:path}")
     async def serve_react_app(catchall: str):
         api_prefixes = [
@@ -485,11 +500,7 @@ if os.path.exists(dist_path):
         ]
         if any(catchall.startswith(prefix) for prefix in api_prefixes):
             raise HTTPException(status_code=404)
-
-        index_file = os.path.join(dist_path, "index.html")
-        if os.path.exists(index_file):
-            return FileResponse(index_file)
-        return {"error": "Frontend build not found"}
+        return _serve_spa_path(catchall)
 
 
 # --- Run Server ---
