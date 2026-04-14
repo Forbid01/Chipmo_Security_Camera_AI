@@ -97,4 +97,54 @@ export const deleteCamera = async (id) => {
   return response.data;
 };
 
+export const updateCamera = async (id, data) => {
+  const response = await api.put(`/admin/cameras/${id}`, data);
+  return response.data;
+};
+
+// --- ADMIN PANEL (USERS, STATS, ALERTS) ---
+
+// Хэрэглэгч удирдах
+export const getUsers = async () => {
+  const response = await api.get("/admin/users");
+  return response.data;
+};
+
+export const updateUserRole = async (id, role) => {
+  const response = await api.put(`/admin/users/${id}/role`, { role });
+  return response.data;
+};
+
+export const updateUserOrganization = async (id, organizationId) => {
+  const response = await api.put(`/admin/users/${id}/organization`, { organization_id: organizationId });
+  return response.data;
+};
+
+export const deleteUser = async (id) => {
+  const response = await api.delete(`/admin/users/${id}`);
+  return response.data;
+};
+
+// Статистик
+export const getAdminStats = async () => {
+  const response = await api.get("/admin/stats");
+  return response.data;
+};
+
+// Alert удирдах
+export const getAdminAlerts = async (params = {}) => {
+  const response = await api.get("/admin/alerts", { params });
+  return response.data;
+};
+
+export const markAlertReviewed = async (id) => {
+  const response = await api.put(`/admin/alerts/${id}/reviewed`);
+  return response.data;
+};
+
+export const deleteAlert = async (id) => {
+  const response = await api.delete(`/admin/alerts/${id}`);
+  return response.data;
+};
+
 export default api;

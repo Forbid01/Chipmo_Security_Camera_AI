@@ -129,6 +129,49 @@ class UserRepository(BaseDB):
         query = "DELETE FROM cameras WHERE id = %s"
         return await self._execute_update(query, (cam_id,))
 
+    # --- ХЭРЭГЛЭГЧ УДИРДАХ (ADMIN) ---
+
+    async def get_all_users(self) -> List[Dict[str, Any]]:
+        query = """
+        SELECT u.id, u.username, u.email, u.full_name, u.role,
+               u.organization_id, o.name as organization_name, u.is_active, u.created_at
+        FROM users u
+        LEFT JOIN organizations o ON u.organization_id = o.id
+        ORDER BY u.created_at DESC;
+        """
+        return await self._execute_fetch_all(query)
+
+    async def get_user_by_id(self, user_id: int) -> Optional[Dict[str, Any]]:
+        query = "SELECT * FROM users WHERE id = %s"
+        return await self._execute_fetch_one(query, (user_id,))
+
+    async def update_user_role(self, user_id: int, role: str) -> bool:
+        query = "UPDATE users SET role = %s WHERE id = %s"
+        return await self._execute_update(query, (role, user_id))
+
+    async def update_user_organization(self, user_id: int, organization_id: int = None) -> bool:
+        query = "UPDATE users SET organization_id = %s WHERE id = %s"
+        return await self._execute_update(query, (organization_id, user_id))
+
+    async def deactivate_user(self, user_id: int) -> bool:
+        query = "UPDATE users SET is_active = FALSE WHERE id = %s"
+        return await self._execute_update(query, (user_id,))
+
+    async def update_camera(self, cam_id: int, name: str, url: str, cam_type: str, org_id: int) -> bool:
+        query = "UPDATE cameras SET name = %s, url = %s, type = %s, organization_id = %s WHERE id = %s"
+        return await self._execute_update(query, (name, url, cam_type, org_id, cam_id))
+
+    async def get_stats(self) -> Dict[str, Any]:
+        query = """
+        SELECT
+            (SELECT COUNT(*) FROM users WHERE is_active = TRUE) as users,
+            (SELECT COUNT(*) FROM organizations) as organizations,
+            (SELECT COUNT(*) FROM cameras) as cameras,
+            (SELECT COUNT(*) FROM alerts) as alerts
+        """
+        result = await self._execute_fetch_one(query)
+        return dict(result) if result else {"users": 0, "organizations": 0, "cameras": 0, "alerts": 0}
+
     # --- НУУЦ ҮГ СЭРГЭЭХ ---
 
     async def update_recovery_data(self, user_id: int, code: str, expiry: datetime) -> bool:

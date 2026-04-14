@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Request
 from fastapi.security import OAuth2PasswordRequestForm
 from ..services.auth_service import AuthService
 from pydantic import BaseModel, EmailStr
-from typing import List
+from typing import List, Optional
 
 from slowapi import Limiter
 from slowapi.util import get_remote_address
@@ -41,6 +41,18 @@ class CameraCreate(BaseModel):
     url: str
     type: str  # 'mac', 'phone', 'axis'
     organization_id: int
+
+class CameraUpdate(BaseModel):
+    name: str
+    url: str
+    type: str
+    organization_id: int
+
+class UserRoleUpdate(BaseModel):
+    role: str
+
+class UserOrgUpdate(BaseModel):
+    organization_id: Optional[int] = None
 
 # --- API ENDPOINTS ---
 
@@ -206,3 +218,119 @@ async def delete_camera(
     if not success:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Камер олдсонгүй")
     return {"message": "Камер амжилттай устгагдлаа"}
+
+@router.put("/admin/cameras/{cam_id}")
+async def update_camera(
+    cam_id: int,
+    cam_data: CameraUpdate,
+    current_user: dict = Depends(AuthService.get_current_user)
+):
+    """Камерын мэдээлэл засах"""
+    if current_user.get("role") != "super_admin":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Эрх хүрэлцэхгүй")
+    success = await AuthService.update_camera(cam_id, cam_data.name, cam_data.url, cam_data.type, cam_data.organization_id)
+    if not success:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Камер олдсонгүй")
+    return {"message": "Камер амжилттай шинэчлэгдлээ"}
+
+# 3. Хэрэглэгч удирдах (GET, PUT, DELETE)
+
+@router.get("/admin/users")
+async def get_users(current_user: dict = Depends(AuthService.get_current_user)):
+    """Бүх хэрэглэгчдийн жагсаалт"""
+    if current_user.get("role") != "super_admin":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Эрх хүрэлцэхгүй")
+    return await AuthService.get_all_users()
+
+@router.put("/admin/users/{user_id}/role")
+async def update_user_role(
+    user_id: int,
+    data: UserRoleUpdate,
+    current_user: dict = Depends(AuthService.get_current_user)
+):
+    """Хэрэглэгчийн эрх (role) өөрчлөх"""
+    if current_user.get("role") != "super_admin":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Эрх хүрэлцэхгүй")
+    success = await AuthService.update_user_role(user_id, data.role)
+    if not success:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Алдаа гарлаа")
+    return {"message": "Хэрэглэгчийн эрх шинэчлэгдлээ"}
+
+@router.put("/admin/users/{user_id}/organization")
+async def update_user_org(
+    user_id: int,
+    data: UserOrgUpdate,
+    current_user: dict = Depends(AuthService.get_current_user)
+):
+    """Хэрэглэгчийг байгууллагад хуваарилах"""
+    if current_user.get("role") != "super_admin":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Эрх хүрэлцэхгүй")
+    success = await AuthService.update_user_organization(user_id, data.organization_id)
+    if not success:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Алдаа гарлаа")
+    return {"message": "Хэрэглэгч байгууллагад хуваарилагдлаа"}
+
+@router.delete("/admin/users/{user_id}")
+async def delete_user(
+    user_id: int,
+    current_user: dict = Depends(AuthService.get_current_user)
+):
+    """Хэрэглэгч идэвхгүй болгох"""
+    if current_user.get("role") != "super_admin":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Эрх хүрэлцэхгүй")
+    target = await AuthService.get_user_by_id(user_id)
+    if target and target.get("username") == current_user.get("username"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Өөрийгөө устгах боломжгүй")
+    success = await AuthService.deactivate_user(user_id)
+    if not success:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Хэрэглэгч олдсонгүй")
+    return {"message": "Хэрэглэгч идэвхгүй болгогдлоо"}
+
+# 4. Статистик (Dashboard)
+
+@router.get("/admin/stats")
+async def get_stats(current_user: dict = Depends(AuthService.get_current_user)):
+    """Системийн ерөнхий статистик"""
+    if current_user.get("role") != "super_admin":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Эрх хүрэлцэхгүй")
+    return await AuthService.get_stats()
+
+# 5. Alert удирдах (GET, PUT, DELETE)
+
+@router.get("/admin/alerts")
+async def get_admin_alerts(
+    organization_id: Optional[int] = None,
+    limit: int = 50,
+    offset: int = 0,
+    current_user: dict = Depends(AuthService.get_current_user)
+):
+    """Бүх alert-уудыг харах"""
+    if current_user.get("role") != "super_admin":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Эрх хүрэлцэхгүй")
+    return await AuthService.get_all_alerts_admin(organization_id, limit, offset)
+
+@router.put("/admin/alerts/{alert_id}/reviewed")
+async def mark_alert_reviewed(
+    alert_id: int,
+    current_user: dict = Depends(AuthService.get_current_user)
+):
+    """Alert-ыг шалгасан гэж тэмдэглэх"""
+    if current_user.get("role") != "super_admin":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Эрх хүрэлцэхгүй")
+    success = await AuthService.mark_alert_reviewed(alert_id)
+    if not success:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Alert олдсонгүй")
+    return {"message": "Alert шалгагдсан гэж тэмдэглэгдлээ"}
+
+@router.delete("/admin/alerts/{alert_id}")
+async def delete_alert(
+    alert_id: int,
+    current_user: dict = Depends(AuthService.get_current_user)
+):
+    """Alert устгах"""
+    if current_user.get("role") != "super_admin":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Эрх хүрэлцэхгүй")
+    success = await AuthService.delete_alert(alert_id)
+    if not success:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Alert олдсонгүй")
+    return {"message": "Alert устгагдлаа"}

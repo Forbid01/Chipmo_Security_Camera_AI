@@ -15,10 +15,14 @@ from ..core.security import (
     ALGORITHM
 )
 from ..db.repository.users import UserRepository
+from ..db.repository.alerts import AlertRepository
 from .email_service import send_otp_email
 
 logger = logging.getLogger(__name__)
 user_repo = UserRepository()
+alert_repo = AlertRepository()
+
+VALID_ROLES = {"user", "admin", "super_admin"}
 
 class AuthService:
     
@@ -112,6 +116,52 @@ class AuthService:
     async def delete_camera(cam_id: int):
         """Камер устгах"""
         return await user_repo.delete_camera(cam_id)
+
+    # --- ХЭРЭГЛЭГЧ УДИРДАХ (ADMIN) ---
+
+    @staticmethod
+    async def get_all_users():
+        return await user_repo.get_all_users()
+
+    @staticmethod
+    async def update_user_role(user_id: int, role: str):
+        if role not in VALID_ROLES:
+            raise HTTPException(status_code=400, detail=f"Role '{role}' буруу байна")
+        return await user_repo.update_user_role(user_id, role)
+
+    @staticmethod
+    async def update_user_organization(user_id: int, organization_id: int = None):
+        return await user_repo.update_user_organization(user_id, organization_id)
+
+    @staticmethod
+    async def deactivate_user(user_id: int):
+        return await user_repo.deactivate_user(user_id)
+
+    @staticmethod
+    async def get_user_by_id(user_id: int):
+        return await user_repo.get_user_by_id(user_id)
+
+    @staticmethod
+    async def get_stats():
+        return await user_repo.get_stats()
+
+    @staticmethod
+    async def update_camera(cam_id: int, name: str, url: str, cam_type: str, org_id: int):
+        return await user_repo.update_camera(cam_id, name, url, cam_type, org_id)
+
+    # --- ALERT УДИРДАХ (ADMIN) ---
+
+    @staticmethod
+    async def get_all_alerts_admin(organization_id=None, limit=50, offset=0):
+        return alert_repo.get_all_alerts_admin(organization_id, limit, offset)
+
+    @staticmethod
+    async def mark_alert_reviewed(alert_id: int):
+        return alert_repo.mark_alert_reviewed(alert_id)
+
+    @staticmethod
+    async def delete_alert(alert_id: int):
+        return alert_repo.delete_alert(alert_id)
 
     # --- НУУЦ ҮГ СЭРГЭЭХ ЛОГИК (OTP) ---
 
