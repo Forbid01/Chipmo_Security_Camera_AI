@@ -1,8 +1,8 @@
 import logging
-import json
-from typing import Optional, Dict, Any
-from sqlalchemy.ext.asyncio import AsyncSession
+from typing import Any, Dict, Optional
+
 from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
 
@@ -10,18 +10,59 @@ logger = logging.getLogger(__name__)
 class FeedbackRepository:
     def __init__(self, db: AsyncSession):
         self.db = db
+        self._column_cache: Dict[str, set[str]] = {}
 
-    async def create_feedback(self, alert_id: int, feedback_type: str,
-                              reviewer_id: int = None, notes: str = None) -> Optional[int]:
-        # Get alert details for learning data
-        alert_q = text("SELECT * FROM alerts WHERE id = :id")
-        alert_result = await self.db.execute(alert_q, {"id": alert_id})
-        alert = alert_result.mappings().fetchone()
+    async def _get_table_columns(self, table_name: str) -> set[str]:
+        if table_name not in self._column_cache:
+            query = text("""
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_schema = 'public' AND table_name = :table_name
+            """)
+            result = await self.db.execute(query, {"table_name": table_name})
+            self._column_cache[table_name] = {row[0] for row in result.fetchall()}
+        return self._column_cache[table_name]
+
+    async def _get_alert_feedback_context(self, alert_id: int) -> Optional[Dict[str, Any]]:
+        alerts_columns = await self._get_table_columns("alerts")
+        cameras_columns = await self._get_table_columns("cameras")
+        has_alert_store_id = "store_id" in alerts_columns
+        has_alert_camera_id = "camera_id" in alerts_columns
+        has_camera_store_id = "store_id" in cameras_columns
+        join_camera = has_alert_camera_id and has_camera_store_id
+
+        store_select = "a.store_id AS store_id" if has_alert_store_id else (
+            "c.store_id AS store_id" if join_camera else "NULL::integer AS store_id"
+        )
+        score_select = (
+            "a.confidence_score AS confidence_score"
+            if "confidence_score" in alerts_columns
+            else "NULL::double precision AS confidence_score"
+        )
+        camera_join = "LEFT JOIN cameras c ON a.camera_id = c.id" if join_camera else ""
+
+        query = text(f"""
+            SELECT
+                {store_select},
+                {score_select}
+            FROM alerts a
+            {camera_join}
+            WHERE a.id = :id
+        """)
+        result = await self.db.execute(query, {"id": alert_id})
+        row = result.mappings().fetchone()
+        return dict(row) if row else None
+
+    async def create_feedback(
+        self,
+        alert_id: int,
+        feedback_type: str,
+        reviewer_id: int = None,
+        notes: str = None,
+    ) -> Optional[int]:
+        alert = await self._get_alert_feedback_context(alert_id)
         if not alert:
             return None
-
-        store_id = alert.get("store_id") if alert else None
-        score = alert.get("confidence_score") if alert else None
 
         query = text("""
             INSERT INTO alert_feedback (alert_id, store_id, feedback_type, reviewer_id, notes, score_at_alert)
@@ -30,17 +71,29 @@ class FeedbackRepository:
                 feedback_type = :fb_type, reviewer_id = :reviewer_id, notes = :notes
             RETURNING id
         """)
-        result = await self.db.execute(query, {
-            "alert_id": alert_id, "store_id": store_id,
-            "fb_type": feedback_type, "reviewer_id": reviewer_id,
-            "notes": notes, "score": score,
-        })
-
-        # Update alert feedback_status
-        await self.db.execute(
-            text("UPDATE alerts SET feedback_status = :status, reviewed = TRUE WHERE id = :id"),
-            {"status": feedback_type, "id": alert_id}
+        result = await self.db.execute(
+            query,
+            {
+                "alert_id": alert_id,
+                "store_id": alert.get("store_id"),
+                "fb_type": feedback_type,
+                "reviewer_id": reviewer_id,
+                "notes": notes,
+                "score": alert.get("confidence_score"),
+            },
         )
+
+        alerts_columns = await self._get_table_columns("alerts")
+        if "feedback_status" in alerts_columns:
+            await self.db.execute(
+                text("UPDATE alerts SET feedback_status = :status, reviewed = TRUE WHERE id = :id"),
+                {"status": feedback_type, "id": alert_id},
+            )
+        else:
+            await self.db.execute(
+                text("UPDATE alerts SET reviewed = TRUE WHERE id = :id"),
+                {"id": alert_id},
+            )
 
         await self.db.commit()
         row = result.fetchone()
@@ -69,8 +122,11 @@ class FeedbackRepository:
         fp = row["false_positives"] or 0
         precision = tp / (tp + fp) if (tp + fp) > 0 else None
 
-        # Count unreviewed alerts
-        unreviewed_q = text("SELECT COUNT(*) FROM alerts WHERE feedback_status = 'unreviewed'")
+        alerts_columns = await self._get_table_columns("alerts")
+        if "feedback_status" in alerts_columns:
+            unreviewed_q = text("SELECT COUNT(*) FROM alerts WHERE feedback_status = 'unreviewed'")
+        else:
+            unreviewed_q = text("SELECT COUNT(*) FROM alerts WHERE COALESCE(reviewed, FALSE) = FALSE")
         unreviewed_result = await self.db.execute(unreviewed_q)
         unreviewed = unreviewed_result.scalar() or 0
 
@@ -83,10 +139,8 @@ class FeedbackRepository:
         }
 
     async def get_learning_status(self, store_id: int = None) -> Dict[str, Any]:
-        """Auto-learning системийн одоогийн төлөв."""
         stats = await self.get_stats(store_id)
 
-        # Get current threshold for store
         threshold = 80.0
         if store_id:
             q = text("SELECT alert_threshold FROM stores WHERE id = :id")
@@ -95,7 +149,6 @@ class FeedbackRepository:
             if row:
                 threshold = row[0]
 
-        # Get learned adjustments
         learned_q = text("""
             SELECT learned_threshold, learned_score_weights, total_feedback_used
             FROM model_versions
@@ -114,9 +167,14 @@ class FeedbackRepository:
             "auto_learn_ready": stats["total_feedback"] >= 20,
         }
 
-    async def get_feedback_for_learning(self, store_id: int = None,
-                                        limit: int = 1000) -> list:
-        """Auto-learning-д ашиглах feedback өгөгдөл."""
+    async def get_feedback_for_learning(self, store_id: int = None, limit: int = 1000) -> list:
+        alerts_columns = await self._get_table_columns("alerts")
+        score_select = (
+            "a.confidence_score AS confidence_score"
+            if "confidence_score" in alerts_columns
+            else "af.score_at_alert AS confidence_score"
+        )
+
         conditions = ""
         params = {"limit": limit}
         if store_id:
@@ -124,7 +182,7 @@ class FeedbackRepository:
             params["store_id"] = store_id
 
         query = text(f"""
-            SELECT af.*, a.confidence_score, a.description
+            SELECT af.*, {score_select}, a.description
             FROM alert_feedback af
             JOIN alerts a ON af.alert_id = a.id
             WHERE af.feedback_type IN ('true_positive', 'false_positive')
