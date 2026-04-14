@@ -60,35 +60,44 @@ const content = {
         }
     },
     pricing: {
-      badge: "Simple Pricing",
-      title: "PLANS FOR",
-      titleHighlight: "EVERY STORE",
-      subtitle: "Start free, upgrade when you're ready. No hidden fees.",
+      badge: "Per-Camera Pricing",
+      title: "TRANSPARENT",
+      titleHighlight: "PRICING",
+      subtitle: "Platform fee + per-camera rate with volume discounts. The more cameras, the lower the rate.",
+      platformFee: "₮29,000",
+      platformFeeLabel: "Platform fee / org / month",
+      tiers: [
+        { range: "1–5 cameras", rate: "₮20,000" },
+        { range: "6–20 cameras", rate: "₮17,000" },
+        { range: "21–50 cameras", rate: "₮14,000" },
+        { range: "51+ cameras", rate: "₮11,000" },
+      ],
+      tierLabel: "per camera / month",
       plans: [
         {
           name: "Starter",
-          price: "Үнэгүй",
-          period: "",
-          desc: "For small stores getting started",
-          features: ["1 camera", "Basic alerts", "7-day history", "Email support"],
-          cta: "Start Free",
+          price: "₮20,000",
+          period: "/camera/mo",
+          desc: "1–5 cameras + ₮29,000 platform fee",
+          features: ["Up to 5 cameras", "Basic alerts", "7-day history", "Email support"],
+          cta: "Start 14-Day Trial",
           highlighted: false
         },
         {
           name: "Business",
-          price: "₮49,000",
+          price: "₮17,000",
           period: "/camera/mo",
-          desc: "For growing retail businesses",
-          features: ["Unlimited cameras", "Instant phone alerts", "30-day history", "Auto-learning AI", "Weekly reports", "Priority support"],
+          desc: "6–20 cameras + ₮29,000 platform fee",
+          features: ["Up to 20 cameras", "Instant phone alerts", "30-day history", "Auto-learning AI", "Weekly reports", "Priority support"],
           cta: "Start 14-Day Trial",
           highlighted: true
         },
         {
           name: "Enterprise",
-          price: "Custom",
-          period: "",
-          desc: "For chains & large operations",
-          features: ["Multi-store dashboard", "On-premise option", "Custom AI training", "Dedicated manager", "SLA guarantee", "API access"],
+          price: "₮11,000",
+          period: "/camera/mo",
+          desc: "51+ cameras + ₮29,000 platform fee",
+          features: ["Unlimited cameras", "Multi-store dashboard", "On-premise option", "Custom AI training", "Dedicated manager", "SLA guarantee"],
           cta: "Contact Sales",
           highlighted: false
         }
@@ -178,35 +187,44 @@ const content = {
         }
     },
     pricing: {
-      badge: "Энгийн үнэ",
-      title: "БҮХИЙ Л",
-      titleHighlight: "ДЭЛГҮҮРТ ТОХИРНО",
-      subtitle: "Үнэгүй эхэлж, бэлэн болмогц шилжээрэй. Нуугдсан төлбөргүй.",
+      badge: "Камер тус бүрээр",
+      title: "ИЛ ТОД",
+      titleHighlight: "ҮНЭЛГЭЭ",
+      subtitle: "Платформ хураамж + камерын тоогоор хямдрах үнэ. Камер их байх тусам үнэ буурна.",
+      platformFee: "₮29,000",
+      platformFeeLabel: "Платформ хураамж / байгууллага / сар",
+      tiers: [
+        { range: "1–5 камер", rate: "₮20,000" },
+        { range: "6–20 камер", rate: "₮17,000" },
+        { range: "21–50 камер", rate: "₮14,000" },
+        { range: "51+ камер", rate: "₮11,000" },
+      ],
+      tierLabel: "камер / сар",
       plans: [
         {
           name: "Starter",
-          price: "Үнэгүй",
-          period: "",
-          desc: "Жижиг дэлгүүрт зориулсан",
-          features: ["1 камер", "Үндсэн мэдэгдэл", "7 хоногийн түүх", "Имэйл дэмжлэг"],
-          cta: "Үнэгүй эхлэх",
+          price: "₮20,000",
+          period: "/камер/сар",
+          desc: "1–5 камер + ₮29,000 платформ хураамж",
+          features: ["5 хүртэл камер", "Үндсэн мэдэгдэл", "7 хоногийн түүх", "Имэйл дэмжлэг"],
+          cta: "14 хоног туршиж үзэх",
           highlighted: false
         },
         {
           name: "Business",
-          price: "₮49,000",
+          price: "₮17,000",
           period: "/камер/сар",
-          desc: "Өсөж буй худалдааны бизнест",
-          features: ["Хязгааргүй камер", "Утсанд шууд мэдэгдэл", "30 хоногийн түүх", "Өөрөө суралцдаг AI", "Долоо хоногийн тайлан", "Тэргүүлэх дэмжлэг"],
+          desc: "6–20 камер + ₮29,000 платформ хураамж",
+          features: ["20 хүртэл камер", "Утсанд шууд мэдэгдэл", "30 хоногийн түүх", "Өөрөө суралцдаг AI", "Долоо хоногийн тайлан", "Тэргүүлэх дэмжлэг"],
           cta: "14 хоног туршиж үзэх",
           highlighted: true
         },
         {
           name: "Enterprise",
-          price: "Тохиролцоно",
-          period: "",
-          desc: "Сүлжээ дэлгүүр, томоохон бизнест",
-          features: ["Олон салбарын самбар", "Дотоод сервер сонголт", "AI тусгай тохируулга", "Хариуцсан менежер", "SLA баталгаа", "API хандалт"],
+          price: "₮11,000",
+          period: "/камер/сар",
+          desc: "51+ камер + ₮29,000 платформ хураамж",
+          features: ["Хязгааргүй камер", "Олон салбарын самбар", "Дотоод сервер сонголт", "AI тусгай тохируулга", "Хариуцсан менежер", "SLA баталгаа"],
           cta: "Холбогдох",
           highlighted: false
         }
@@ -773,7 +791,7 @@ function PricingSection({ t, lang }) {
   return (
     <section id="pricing" className="py-32 border-t border-white/5 bg-slate-900/10">
       <div className="max-w-[1400px] mx-auto px-6">
-        <div className="text-center mb-20">
+        <div className="text-center mb-12">
           <motion.div initial={{ opacity: 0, scale: 0.9 }} whileInView={{ opacity: 1, scale: 1 }} viewport={{ once: true }} className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-slate-800/50 border border-slate-700 mb-6 uppercase tracking-widest text-xs font-mono">
             <Star size={14} className="text-amber-400" /> {t.badge}
           </motion.div>
@@ -782,6 +800,29 @@ function PricingSection({ t, lang }) {
           </h2>
           <p className="text-slate-400 max-w-2xl mx-auto text-lg font-light">{t.subtitle}</p>
         </div>
+
+        {/* Platform fee + Tier table */}
+        <motion.div initial={{ opacity: 0, y: 15 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="max-w-2xl mx-auto mb-16">
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-6">
+            <div className="px-6 py-4 rounded-2xl bg-gradient-to-r from-red-600/20 to-amber-600/20 border border-red-500/30 text-center">
+              <div className="text-3xl font-black text-white">{t.platformFee}</div>
+              <div className="text-xs text-slate-400 mt-1">{t.platformFeeLabel}</div>
+            </div>
+            <span className="text-2xl font-bold text-slate-500">+</span>
+            <div className="w-full sm:w-auto">
+              <table className="w-full text-sm">
+                <tbody>
+                  {t.tiers.map((tier, i) => (
+                    <tr key={i} className="border-b border-slate-800/50 last:border-0">
+                      <td className="py-2 pr-6 text-slate-400 font-mono">{tier.range}</td>
+                      <td className="py-2 text-white font-bold text-right">{tier.rate}<span className="text-slate-500 font-normal text-xs ml-1">/{lang === 'mn' ? 'сар' : 'mo'}</span></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </motion.div>
 
         <div className="grid md:grid-cols-3 gap-8 max-w-5xl mx-auto">
           {t.plans.map((plan, idx) => (
