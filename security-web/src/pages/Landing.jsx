@@ -60,48 +60,54 @@ const content = {
         }
     },
     pricing: {
-      badge: "Per-Camera Pricing",
-      title: "TRANSPARENT",
-      titleHighlight: "PRICING",
-      subtitle: "Platform fee + per-camera rate with volume discounts. The more cameras, the lower the rate.",
-      platformFee: "₮29,000",
-      platformFeeLabel: "Platform fee / org / month",
-      tiers: [
-        { range: "1–5 cameras", rate: "₮20,000" },
-        { range: "6–20 cameras", rate: "₮17,000" },
-        { range: "21–50 cameras", rate: "₮14,000" },
-        { range: "51+ cameras", rate: "₮11,000" },
-      ],
-      tierLabel: "per camera / month",
-      plans: [
-        {
-          name: "Starter",
-          price: "₮20,000",
-          period: "/camera/mo",
-          desc: "1–5 cameras + ₮29,000 platform fee",
-          features: ["Up to 5 cameras", "Basic alerts", "7-day history", "Email support"],
-          cta: "Start 14-Day Trial",
-          highlighted: false
+      badge: "Transparent Pricing",
+      title: "3 SIMPLE",
+      titleHighlight: "COMPONENTS",
+      subtitle: "Monthly SaaS subscription + one-time setup. No hidden fees.",
+      sections: {
+        saas: {
+          title: "Monthly Subscription",
+          platformFee: "₮29,000",
+          platformLabel: "/ store / month",
+          tiers: [
+            { range: "1–5 cameras", rate: "₮20,000" },
+            { range: "6–20 cameras", rate: "₮17,000" },
+            { range: "21–50 cameras", rate: "₮14,000" },
+            { range: "51+ cameras", rate: "₮11,000" },
+          ],
+          tierLabel: "/ camera / month",
         },
-        {
-          name: "Business",
-          price: "₮17,000",
-          period: "/camera/mo",
-          desc: "6–20 cameras + ₮29,000 platform fee",
-          features: ["Up to 20 cameras", "Instant phone alerts", "30-day history", "Auto-learning AI", "Weekly reports", "Priority support"],
-          cta: "Start 14-Day Trial",
-          highlighted: true
+        setup: {
+          title: "Setup Fee (one-time)",
+          chipmo: { label: "Chipmo technician", tiers: ["₮30,000", "₮25,000", "₮20,000"] },
+          self: { label: "Self-setup", tiers: ["₮15,000", "₮12,000", "₮10,000"] },
+          ranges: ["1–5 cam", "6–20 cam", "21+ cam"],
         },
-        {
-          name: "Enterprise",
-          price: "₮11,000",
-          period: "/camera/mo",
-          desc: "51+ cameras + ₮29,000 platform fee",
-          features: ["Unlimited cameras", "Multi-store dashboard", "On-premise option", "Custom AI training", "Dedicated manager", "SLA guarantee"],
-          cta: "Contact Sales",
-          highlighted: false
-        }
-      ]
+        visit: {
+          title: "Dispatch Fee (one-time)",
+          items: [
+            { label: "Ulaanbaatar (1st store)", fee: "₮50,000" },
+            { label: "UB additional stores", fee: "₮30,000 / each" },
+            { label: "Countryside", fee: "₮20,000 / store" },
+            { label: "Self-setup (no visit)", fee: "Free" },
+          ],
+        },
+      },
+      calc: {
+        cameras: "Number of cameras",
+        stores: "Number of stores",
+        location: "Location",
+        locOpts: { ub: "Ulaanbaatar", remote: "Countryside", self: "Self-setup" },
+        setup: "Setup by",
+        setupOpts: { chipmo: "Chipmo technician", self: "Self-setup" },
+        monthly: "Monthly subscription",
+        oneTime: "One-time fees",
+        setupFee: "Setup fee",
+        visitFee: "Dispatch fee",
+        firstMonth: "First month total",
+        monthlyTotal: "Then monthly",
+        annual: "Annual total (12 months)",
+      },
     },
     contact: {
       title: "LET'S TALK",
@@ -187,48 +193,54 @@ const content = {
         }
     },
     pricing: {
-      badge: "Камер тус бүрээр",
-      title: "ИЛ ТОД",
-      titleHighlight: "ҮНЭЛГЭЭ",
-      subtitle: "Платформ хураамж + камерын тоогоор хямдрах үнэ. Камер их байх тусам үнэ буурна.",
-      platformFee: "₮29,000",
-      platformFeeLabel: "Платформ хураамж / байгууллага / сар",
-      tiers: [
-        { range: "1–5 камер", rate: "₮20,000" },
-        { range: "6–20 камер", rate: "₮17,000" },
-        { range: "21–50 камер", rate: "₮14,000" },
-        { range: "51+ камер", rate: "₮11,000" },
-      ],
-      tierLabel: "камер / сар",
-      plans: [
-        {
-          name: "Starter",
-          price: "₮20,000",
-          period: "/камер/сар",
-          desc: "1–5 камер + ₮29,000 платформ хураамж",
-          features: ["5 хүртэл камер", "Үндсэн мэдэгдэл", "7 хоногийн түүх", "Имэйл дэмжлэг"],
-          cta: "14 хоног туршиж үзэх",
-          highlighted: false
+      badge: "Ил тод үнэлгээ",
+      title: "3 ЭНГИЙН",
+      titleHighlight: "БҮРЭЛДЭХҮҮН",
+      subtitle: "Сарын SaaS захиалга + нэг удаагийн тохируулга. Нуугдсан төлбөргүй.",
+      sections: {
+        saas: {
+          title: "Сарын захиалга",
+          platformFee: "₮29,000",
+          platformLabel: "/ салбар / сар",
+          tiers: [
+            { range: "1–5 камер", rate: "₮20,000" },
+            { range: "6–20 камер", rate: "₮17,000" },
+            { range: "21–50 камер", rate: "₮14,000" },
+            { range: "51+ камер", rate: "₮11,000" },
+          ],
+          tierLabel: "/ камер / сар",
         },
-        {
-          name: "Business",
-          price: "₮17,000",
-          period: "/камер/сар",
-          desc: "6–20 камер + ₮29,000 платформ хураамж",
-          features: ["20 хүртэл камер", "Утсанд шууд мэдэгдэл", "30 хоногийн түүх", "Өөрөө суралцдаг AI", "Долоо хоногийн тайлан", "Тэргүүлэх дэмжлэг"],
-          cta: "14 хоног туршиж үзэх",
-          highlighted: true
+        setup: {
+          title: "Тохируулгын хөлс (нэг удаа)",
+          chipmo: { label: "Chipmo техник", tiers: ["₮30,000", "₮25,000", "₮20,000"] },
+          self: { label: "Өөрөө хийх", tiers: ["₮15,000", "₮12,000", "₮10,000"] },
+          ranges: ["1–5 камер", "6–20 камер", "21+ камер"],
         },
-        {
-          name: "Enterprise",
-          price: "₮11,000",
-          period: "/камер/сар",
-          desc: "51+ камер + ₮29,000 платформ хураамж",
-          features: ["Хязгааргүй камер", "Олон салбарын самбар", "Дотоод сервер сонголт", "AI тусгай тохируулга", "Хариуцсан менежер", "SLA баталгаа"],
-          cta: "Холбогдох",
-          highlighted: false
-        }
-      ]
+        visit: {
+          title: "Дуудлагын хөлс (нэг удаа)",
+          items: [
+            { label: "УБ (эхний салбар)", fee: "₮50,000" },
+            { label: "УБ нэмэлт салбар", fee: "₮30,000 / тус бүр" },
+            { label: "Орон нутаг", fee: "₮20,000 / салбар" },
+            { label: "Өөрөө хийх (дуудлагагүй)", fee: "Үнэгүй" },
+          ],
+        },
+      },
+      calc: {
+        cameras: "Камерын тоо",
+        stores: "Салбарын тоо",
+        location: "Байршил",
+        locOpts: { ub: "Улаанбаатар", remote: "Орон нутаг", self: "Өөрөө" },
+        setup: "Тохируулга",
+        setupOpts: { chipmo: "Chipmo техник", self: "Өөрөө хийх" },
+        monthly: "Сарын захиалга",
+        oneTime: "Нэг удаагийн хөлс",
+        setupFee: "Тохируулгын хөлс",
+        visitFee: "Дуудлагын хөлс",
+        firstMonth: "Эхний сарын нийт",
+        monthlyTotal: "Дараа сар бүр",
+        annual: "Жилийн нийт (12 сар)",
+      },
     },
     contact: {
       title: "ХОЛБОО БАРИХ",
@@ -794,80 +806,131 @@ function getCameraRate(count) {
   return 11000;
 }
 
+function getSetupRate(count, selfSetup) {
+  if (selfSetup) {
+    if (count <= 5) return 15000;
+    if (count <= 20) return 12000;
+    return 10000;
+  }
+  if (count <= 5) return 30000;
+  if (count <= 20) return 25000;
+  return 20000;
+}
+
+function getVisitFee(stores, location) {
+  if (location === 'self') return 0;
+  if (location === 'remote') return stores * 20000;
+  return 50000 + Math.max(0, stores - 1) * 30000;
+}
+
 function PricingCalculator({ t, lang }) {
   const [cameras, setCameras] = useState(5);
-  const rate = getCameraRate(cameras);
-  const platformFee = 29000;
-  const cameraTotal = cameras * rate;
-  const grandTotal = platformFee + cameraTotal;
+  const [stores, setStores] = useState(1);
+  const [location, setLocation] = useState('ub');
+  const [selfSetup, setSelfSetup] = useState(false);
 
-  const mn = lang === 'mn';
+  const c = t.calc;
+  const camRate = getCameraRate(cameras);
+  const platformFee = 29000;
+  const monthly = stores * platformFee + cameras * camRate;
+  const setupRate = getSetupRate(cameras, selfSetup);
+  const setupFee = cameras * setupRate;
+  const visitFee = getVisitFee(stores, location);
+  const oneTime = setupFee + visitFee;
+  const firstMonth = monthly + oneTime;
+  const annual = monthly * 12 + oneTime;
+
+  const fmt = (n) => '₮' + n.toLocaleString();
 
   return (
     <motion.div initial={{ opacity: 0, y: 15 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="max-w-3xl mx-auto mb-16">
       <div className="p-6 sm:p-8 rounded-[2rem] bg-[#0f172a]/80 border border-slate-800/60">
-        {/* Slider */}
-        <div className="mb-6">
-          <label className="block text-sm text-slate-400 mb-3 font-mono">
-            {mn ? 'Камерын тоо' : 'Number of cameras'}
-          </label>
+        {/* Camera slider */}
+        <div className="mb-5">
+          <label className="block text-sm text-slate-400 mb-2 font-mono">{c.cameras}</label>
           <div className="flex items-center gap-4">
-            <input
-              type="range"
-              min={1}
-              max={100}
-              value={cameras}
-              onChange={(e) => setCameras(Number(e.target.value))}
-              className="flex-1 h-2 rounded-full appearance-none bg-slate-700 accent-red-500 cursor-pointer"
-            />
-            <div className="min-w-[60px] text-center px-3 py-1.5 rounded-xl bg-slate-800 border border-slate-700">
+            <input type="range" min={1} max={100} value={cameras} onChange={(e) => setCameras(Number(e.target.value))} className="flex-1 h-2 rounded-full appearance-none bg-slate-700 accent-red-500 cursor-pointer" />
+            <div className="min-w-[56px] text-center px-3 py-1 rounded-xl bg-slate-800 border border-slate-700">
               <span className="text-xl font-black text-white">{cameras}</span>
             </div>
           </div>
-          {/* Tier markers */}
-          <div className="flex justify-between mt-2 text-[10px] text-slate-600 font-mono px-1">
-            <span>1</span><span>5</span><span>20</span><span>50</span><span>100</span>
+        </div>
+
+        {/* Store slider */}
+        <div className="mb-5">
+          <label className="block text-sm text-slate-400 mb-2 font-mono">{c.stores}</label>
+          <div className="flex items-center gap-4">
+            <input type="range" min={1} max={20} value={stores} onChange={(e) => setStores(Number(e.target.value))} className="flex-1 h-2 rounded-full appearance-none bg-slate-700 accent-red-500 cursor-pointer" />
+            <div className="min-w-[56px] text-center px-3 py-1 rounded-xl bg-slate-800 border border-slate-700">
+              <span className="text-xl font-black text-white">{stores}</span>
+            </div>
           </div>
         </div>
 
-        {/* Tier table */}
-        <div className="mb-6">
-          <table className="w-full text-sm">
-            <tbody>
-              {t.tiers.map((tier, i) => {
-                const tierRates = [20000, 17000, 14000, 11000];
-                const isActive = rate === tierRates[i];
-                return (
-                  <tr key={i} className={`border-b border-slate-800/50 last:border-0 transition-colors ${isActive ? 'bg-red-600/10' : ''}`}>
-                    <td className={`py-2.5 pl-3 pr-6 font-mono ${isActive ? 'text-white' : 'text-slate-500'}`}>
-                      {isActive && <span className="inline-block w-1.5 h-1.5 rounded-full bg-red-500 mr-2" />}
-                      {tier.range}
-                    </td>
-                    <td className={`py-2.5 pr-3 text-right font-bold ${isActive ? 'text-white' : 'text-slate-500'}`}>
-                      {tier.rate}<span className="font-normal text-xs ml-1 text-slate-600">/{mn ? 'сар' : 'mo'}</span>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+        {/* Options row */}
+        <div className="grid grid-cols-2 gap-4 mb-6">
+          <div>
+            <label className="block text-xs text-slate-500 mb-1.5 font-mono">{c.location}</label>
+            <div className="flex flex-wrap gap-1.5">
+              {Object.entries(c.locOpts).map(([key, label]) => (
+                <button key={key} onClick={() => setLocation(key)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${location === key ? 'bg-red-600 text-white' : 'bg-slate-800 text-slate-400 border border-slate-700 hover:border-slate-600'}`}>
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <label className="block text-xs text-slate-500 mb-1.5 font-mono">{c.setup}</label>
+            <div className="flex gap-1.5">
+              {Object.entries(c.setupOpts).map(([key, label]) => (
+                <button key={key} onClick={() => setSelfSetup(key === 'self')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${(selfSetup ? 'self' : 'chipmo') === key ? 'bg-red-600 text-white' : 'bg-slate-800 text-slate-400 border border-slate-700 hover:border-slate-600'}`}>
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
 
-        {/* Calculation breakdown */}
-        <div className="space-y-3 pt-4 border-t border-slate-800/50">
+        {/* Breakdown */}
+        <div className="space-y-2 pt-4 border-t border-slate-800/50">
+          {/* Monthly */}
+          <div className="text-xs text-slate-500 uppercase tracking-wider font-mono mb-1">{c.monthly}</div>
           <div className="flex justify-between text-sm">
-            <span className="text-slate-400">{mn ? 'Платформ хураамж' : 'Platform fee'}</span>
-            <span className="text-slate-300 font-mono">₮{platformFee.toLocaleString()}</span>
+            <span className="text-slate-400">{stores} {lang === 'mn' ? 'салбар' : 'stores'} × {fmt(platformFee)}</span>
+            <span className="text-slate-300 font-mono">{fmt(stores * platformFee)}</span>
           </div>
           <div className="flex justify-between text-sm">
-            <span className="text-slate-400">{cameras} {mn ? 'камер' : 'cameras'} × ₮{rate.toLocaleString()}</span>
-            <span className="text-slate-300 font-mono">₮{cameraTotal.toLocaleString()}</span>
+            <span className="text-slate-400">{cameras} {lang === 'mn' ? 'камер' : 'cam'} × {fmt(camRate)}</span>
+            <span className="text-slate-300 font-mono">{fmt(cameras * camRate)}</span>
           </div>
-          <div className="flex justify-between items-baseline pt-3 border-t border-slate-700/50">
-            <span className="text-slate-300 font-bold">{mn ? 'Сарын нийт дүн' : 'Monthly total'}</span>
-            <span className="text-2xl sm:text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-red-500 to-amber-500">
-              ₮{grandTotal.toLocaleString()}
-            </span>
+
+          {/* One-time */}
+          <div className="text-xs text-slate-500 uppercase tracking-wider font-mono mt-3 mb-1">{c.oneTime}</div>
+          <div className="flex justify-between text-sm">
+            <span className="text-slate-400">{c.setupFee} ({cameras} × {fmt(setupRate)})</span>
+            <span className="text-slate-300 font-mono">{fmt(setupFee)}</span>
+          </div>
+          <div className="flex justify-between text-sm">
+            <span className="text-slate-400">{c.visitFee}</span>
+            <span className="text-slate-300 font-mono">{fmt(visitFee)}</span>
+          </div>
+
+          {/* Totals */}
+          <div className="pt-4 mt-3 border-t border-slate-700/50 space-y-3">
+            <div className="flex justify-between items-baseline">
+              <span className="text-white font-bold">{c.firstMonth}</span>
+              <span className="text-2xl sm:text-3xl font-black text-transparent bg-clip-text bg-gradient-to-r from-red-500 to-amber-500">{fmt(firstMonth)}</span>
+            </div>
+            <div className="flex justify-between text-sm">
+              <span className="text-slate-400">{c.monthlyTotal}</span>
+              <span className="text-slate-300 font-mono font-bold">{fmt(monthly)}</span>
+            </div>
+            <div className="flex justify-between text-sm">
+              <span className="text-slate-400">{c.annual}</span>
+              <span className="text-slate-300 font-mono">{fmt(annual)}</span>
+            </div>
           </div>
         </div>
       </div>
@@ -876,6 +939,7 @@ function PricingCalculator({ t, lang }) {
 }
 
 function PricingSection({ t, lang }) {
+  const s = t.sections;
   return (
     <section id="pricing" className="py-32 border-t border-white/5 bg-slate-900/10">
       <div className="max-w-[1400px] mx-auto px-6">
@@ -889,56 +953,68 @@ function PricingSection({ t, lang }) {
           <p className="text-slate-400 max-w-2xl mx-auto text-lg font-light">{t.subtitle}</p>
         </div>
 
-        {/* Pricing Calculator */}
-        <PricingCalculator t={t} lang={lang} />
-
-        <div className="grid md:grid-cols-3 gap-8 max-w-5xl mx-auto">
-          {t.plans.map((plan, idx) => (
-            <motion.div
-              key={idx}
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ delay: idx * 0.1 }}
-              className={`relative p-8 rounded-[2.5rem] border transition-all ${
-                plan.highlighted
-                  ? 'bg-gradient-to-b from-red-600/10 to-[#0f172a]/80 border-red-500/40 shadow-[0_0_40px_rgba(239,68,68,0.15)]'
-                  : 'bg-[#0f172a]/60 border-slate-800/50 hover:border-slate-700'
-              }`}
-            >
-              {plan.highlighted && (
-                <div className="absolute -top-4 left-1/2 -translate-x-1/2 px-4 py-1 bg-red-600 rounded-full text-[10px] font-black uppercase tracking-widest text-white">
-                  {lang === 'mn' ? 'Хамгийн түгээмэл' : 'Most Popular'}
-                </div>
-              )}
-              <h3 className="text-lg font-bold text-slate-300 mb-2">{plan.name}</h3>
-              <div className="flex items-baseline gap-1 mb-2">
-                <span className="text-4xl font-black text-white">{plan.price}</span>
-                {plan.period && <span className="text-sm text-slate-500">{plan.period}</span>}
-              </div>
-              <p className="text-sm text-slate-500 mb-8">{plan.desc}</p>
-              <ul className="space-y-3 mb-10">
-                {plan.features.map((f, i) => (
-                  <li key={i} className="flex items-center gap-3 text-sm text-slate-300">
-                    <Check size={16} className={plan.highlighted ? 'text-red-400' : 'text-slate-600'} />
-                    {f}
-                  </li>
+        {/* 3 pricing components */}
+        <div className="grid md:grid-cols-3 gap-6 max-w-5xl mx-auto mb-16">
+          {/* 1. SaaS monthly */}
+          <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="p-6 rounded-[2rem] bg-gradient-to-b from-red-600/10 to-[#0f172a]/80 border border-red-500/30">
+            <h3 className="text-sm font-bold text-red-400 uppercase tracking-wider mb-4">{s.saas.title}</h3>
+            <div className="flex items-baseline gap-1 mb-1">
+              <span className="text-3xl font-black text-white">{s.saas.platformFee}</span>
+              <span className="text-xs text-slate-500">{s.saas.platformLabel}</span>
+            </div>
+            <div className="text-[10px] text-slate-600 mb-4 uppercase tracking-wider">+ {lang === 'mn' ? 'камерын хөлс' : 'per-camera fee'}</div>
+            <table className="w-full text-sm">
+              <tbody>
+                {s.saas.tiers.map((tier, i) => (
+                  <tr key={i} className="border-b border-slate-800/40 last:border-0">
+                    <td className="py-2 text-slate-400 font-mono text-xs">{tier.range}</td>
+                    <td className="py-2 text-white font-bold text-right text-sm">{tier.rate}<span className="text-slate-600 font-normal text-[10px] ml-0.5">{s.saas.tierLabel}</span></td>
+                  </tr>
                 ))}
-              </ul>
-              <Link
-                to={plan.highlighted ? '/register' : idx === 2 ? '#contact' : '/register'}
-                onClick={idx === 2 ? (e) => { e.preventDefault(); document.getElementById('contact')?.scrollIntoView({ behavior: 'smooth' }); } : undefined}
-                className={`block text-center w-full py-4 rounded-2xl font-bold text-sm uppercase tracking-wider transition-all ${
-                  plan.highlighted
-                    ? 'bg-red-600 text-white hover:bg-red-500 shadow-lg'
-                    : 'border border-slate-700 text-slate-300 hover:bg-slate-800'
-                }`}
-              >
-                {plan.cta}
-              </Link>
-            </motion.div>
-          ))}
+              </tbody>
+            </table>
+          </motion.div>
+
+          {/* 2. Setup fee */}
+          <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: 0.1 }} className="p-6 rounded-[2rem] bg-[#0f172a]/60 border border-slate-800/50">
+            <h3 className="text-sm font-bold text-amber-400 uppercase tracking-wider mb-4">{s.setup.title}</h3>
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-[10px] text-slate-600 uppercase">
+                  <th className="pb-2 text-left font-normal"></th>
+                  <th className="pb-2 text-right font-normal">{s.setup.chipmo.label}</th>
+                  <th className="pb-2 text-right font-normal">{s.setup.self.label}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {s.setup.ranges.map((range, i) => (
+                  <tr key={i} className="border-b border-slate-800/40 last:border-0">
+                    <td className="py-2 text-slate-400 font-mono text-xs">{range}</td>
+                    <td className="py-2 text-white font-bold text-right">{s.setup.chipmo.tiers[i]}</td>
+                    <td className="py-2 text-green-400 font-bold text-right">{s.setup.self.tiers[i]}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <div className="mt-3 text-[10px] text-slate-600">{lang === 'mn' ? '/ камер тус бүрт / нэг удаа' : '/ per camera / one-time'}</div>
+          </motion.div>
+
+          {/* 3. Visit/dispatch fee */}
+          <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: 0.2 }} className="p-6 rounded-[2rem] bg-[#0f172a]/60 border border-slate-800/50">
+            <h3 className="text-sm font-bold text-blue-400 uppercase tracking-wider mb-4">{s.visit.title}</h3>
+            <div className="space-y-3">
+              {s.visit.items.map((item, i) => (
+                <div key={i} className="flex justify-between items-center">
+                  <span className="text-sm text-slate-400">{item.label}</span>
+                  <span className={`text-sm font-bold ${i === 3 ? 'text-green-400' : 'text-white'}`}>{item.fee}</span>
+                </div>
+              ))}
+            </div>
+          </motion.div>
         </div>
+
+        {/* Interactive Calculator */}
+        <PricingCalculator t={t} lang={lang} />
       </div>
     </section>
   );
