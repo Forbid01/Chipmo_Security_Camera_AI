@@ -1,14 +1,15 @@
 from fastapi import APIRouter
-from .auth import router as auth_router
+
 from .admin import router as admin_router
 from .alerts import router as alerts_router
+from .auth import router as auth_router
 from .cameras import router as cameras_router
-from .stores import router as stores_router
-from .video import router as video_router
 from .feedback import router as feedback_router
 from .my_cameras import router as my_cameras_router
-from .telegram import router as telegram_router
 from .pricing import router as pricing_router
+from .stores import router as stores_router
+from .telegram import router as telegram_router
+from .video import router as video_router
 
 api_router = APIRouter(prefix="/api/v1")
 

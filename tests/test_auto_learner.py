@@ -2,8 +2,9 @@
 
 import os
 import sys
+from unittest.mock import AsyncMock
+
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SHOPLIFT_DIR = os.path.join(BASE_DIR, "shoplift_detector")
@@ -12,7 +13,7 @@ if SHOPLIFT_DIR not in sys.path:
 
 os.environ.setdefault("SECRET_KEY", "test-secret-key-for-pytest-only-do-not-use-in-prod")
 
-from shoplift_detector.app.services.auto_learner import AutoLearner, DEFAULT_WEIGHTS
+from shoplift_detector.app.services.auto_learner import DEFAULT_WEIGHTS, AutoLearner
 
 
 @pytest.fixture

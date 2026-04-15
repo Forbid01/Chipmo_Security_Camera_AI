@@ -1,29 +1,33 @@
-import os
-import logging
-import cv2
 import asyncio
-import numpy as np
-from fastapi import FastAPI, Request, Depends, HTTPException, status
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import StreamingResponse, JSONResponse
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.security import OAuth2PasswordRequestForm
-from slowapi import Limiter
-from slowapi.util import get_remote_address
-from slowapi.errors import RateLimitExceeded
-from starlette.middleware.base import BaseHTTPMiddleware
+import logging
+import os
+from typing import Annotated
 
-# Тохиргоо болон State-үүд
-from app.core.config import ALERTS_DIR, ALLOWED_ORIGINS
 import app.core.state as state
-from app.db.repository.alerts import AlertRepository
+import cv2
+import numpy as np
 
 # Аюулгүй байдал болон Router-үүд
 from app.api.auth import router as auth_router
-from app.services.auth_service import AuthService
 
-from pydantic import EmailStr, BaseModel
+# Тохиргоо болон State-үүд
+from app.core.config import ALERTS_DIR, ALLOWED_ORIGINS
+from app.db.repository.alerts import AlertRepository
+from app.services.auth_service import AuthService
 from app.services.email_service import send_contact_email
+from fastapi import Depends, FastAPI, HTTPException, Request, status
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.security import OAuth2PasswordRequestForm
+from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel, EmailStr
+from slowapi import Limiter
+from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
+from starlette.middleware.base import BaseHTTPMiddleware
+
+LoginForm = Annotated[OAuth2PasswordRequestForm, Depends()]
+CurrentUser = Annotated[dict, Depends(AuthService.get_current_user)]
 
 logger = logging.getLogger(__name__)
 
@@ -160,20 +164,20 @@ async def generate_camera_frames(camera_id: str):
 
 @app.post("/token")
 @limiter.limit("10/minute")
-async def login_for_access_token(request: Request, form_data: OAuth2PasswordRequestForm = Depends()):
+async def login_for_access_token(request: Request, form_data: LoginForm):
     """
-    React Login.jsx-ээс ирэх хүсэлтийг хүлээн авч, 
+    React Login.jsx-ээс ирэх хүсэлтийг хүлээн авч,
     AuthService-ээр баталгаажуулан JWT токен болон User Role-ийг буцаана.
     """
     user = await AuthService.authenticate_user(form_data.username, form_data.password)
-    
+
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Нэвтрэх нэр эсвэл нууц үг буруу байна",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    
+
     # Payload-д хэрэглэгчийн мэдээллийг нууцлан хийнэ
     access_token = await AuthService.create_access_token(
         data={
@@ -196,7 +200,7 @@ async def login_for_access_token(request: Request, form_data: OAuth2PasswordRequ
     }
 
 @app.get("/users/me")
-async def read_users_me(current_user: dict = Depends(AuthService.get_current_user)):
+async def read_users_me(current_user: CurrentUser):
     """Одоо нэвтэрсэн байгаа хэрэглэгчийн бүрэн мэдээллийг буцаана"""
     from app.db.repository.users import UserRepository
     user_repo = UserRepository()
@@ -231,7 +235,7 @@ async def contact_us(form: ContactForm):
         )
         return {"status": "success", "message": "Email sent successfully"}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 # --- VIDEO & ALERTS ---
 
@@ -254,7 +258,7 @@ async def video_feed_by_camera(camera_id: str):
     )
 
 @app.get("/alerts")
-async def get_alerts(request: Request, user: dict = Depends(AuthService.get_current_user)):
+async def get_alerts(request: Request, user: CurrentUser):
     try:
         org_id = user.get("org_id")
         if user.get("role") == "super_admin":
@@ -282,4 +286,6 @@ async def get_alerts(request: Request, user: dict = Depends(AuthService.get_curr
         return {"status": "success", "data": alerts}
     except Exception as e:
         logger.error(f"Alerts endpoint error: {e}")
-        raise HTTPException(status_code=500, detail="Alert мэдээлэл уншихад алдаа гарлаа.")
+        raise HTTPException(
+            status_code=500, detail="Alert мэдээлэл уншихад алдаа гарлаа."
+        ) from e

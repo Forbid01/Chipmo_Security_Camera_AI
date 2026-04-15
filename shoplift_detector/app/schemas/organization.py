@@ -1,6 +1,6 @@
-from pydantic import BaseModel
-from typing import Optional, List
 from datetime import datetime
+
+from pydantic import BaseModel
 
 
 class OrganizationCreate(BaseModel):
@@ -17,5 +17,5 @@ class OrganizationResponse(BaseModel):
 
 
 class OrganizationList(BaseModel):
-    items: List[OrganizationResponse]
+    items: list[OrganizationResponse]
     total: int

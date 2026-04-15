@@ -1,15 +1,21 @@
-import os
-import cv2
 import logging
-import requests
-import time
+import os
 import subprocess
+import tempfile
+import time
+
+import cv2
+import requests
+from app.core.config import TELEGRAM_CHAT_ID, TELEGRAM_TOKEN
+from app.core.state import alert_queue
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
-from app.core.config import TELEGRAM_TOKEN, TELEGRAM_CHAT_ID
-from app.core.state import alert_queue
 
 logger = logging.getLogger(__name__)
+
+
+def _is_remote_url(path: str) -> bool:
+    return isinstance(path, str) and path.startswith(("http://", "https://"))
 
 # Telegram API-д retry логик нэмэх
 _session = requests.Session()
@@ -21,18 +27,18 @@ def save_video_optimized(frames, output_path):
         return False
 
     temp_raw_path = output_path.replace(".mp4", "_raw.mp4")
-    
+
     try:
         height, width, _ = frames[0].shape
-        fourcc = cv2.VideoWriter_fourcc(*'mp4v') 
+        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
         out = cv2.VideoWriter(temp_raw_path, fourcc, 20.0, (width, height))
-        
+
         for f in frames:
             out.write(f)
         out.release()
 
         cmd = [
-            'ffmpeg', '-y', 
+            'ffmpeg', '-y',
             '-i', temp_raw_path,
             '-c:v', 'libx264',
             '-preset', 'ultrafast',
@@ -42,24 +48,24 @@ def save_video_optimized(frames, output_path):
             '-an',
             output_path
         ]
-        
+
         result = subprocess.run(cmd, capture_output=True, text=True)
-        
+
         if result.returncode != 0:
             logger.error(f"FFmpeg Error: {result.stderr}")
             return False
 
         if os.path.exists(temp_raw_path):
             os.remove(temp_raw_path)
-        
+
         return True
-        
+
     except Exception as e:
         logger.error(f"Video Save Error: {e}")
         if os.path.exists(temp_raw_path):
             os.remove(temp_raw_path)
         return False
-    
+
 def send_telegram_photo(token, chat_id, photo_path, caption):
     """Зураг Telegram-руу илгээх (retry логиктой)"""
     try:
@@ -102,12 +108,16 @@ def alert_worker():
 
         try:
             frame = data.get('frame')
+            img_ref = data.get('img', '')
+            if frame is None and not _is_remote_url(img_ref) and os.path.exists(img_ref):
+                frame = cv2.imread(img_ref)
             if frame is None:
-                frame = cv2.imread(data['img'])
-            else:
-                frame = frame.copy()
+                logger.warning("Alert worker: no frame available, skipping Telegram")
+                continue
+            frame = frame.copy()
 
-            tg_photo_path = data['img'].replace('.jpg', '_tg.jpg')
+            with tempfile.NamedTemporaryFile(suffix="_tg.jpg", delete=False) as tf:
+                tg_photo_path = tf.name
 
             if 'bbox' in data:
                 x1, y1, x2, y2 = map(int, data['bbox'])
@@ -128,15 +138,13 @@ def alert_worker():
             else:
                 cv2.imwrite(tg_photo_path, frame)
 
-            cv2.imwrite(data['img'], frame)
-
             # --- 2. VIDEO ---
-            video_path = data['img'].replace('.jpg', '.mp4')
+            video_path = None
             video_saved = False
             if 'clip' in data and data['clip']:
+                with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as vf:
+                    video_path = vf.name
                 video_saved = save_video_optimized(data['clip'], video_path)
-            elif os.path.exists(video_path):
-                video_saved = True
 
             # --- 3. TELEGRAM ---
             timestamp = time.strftime('%Y-%m-%d %H:%M:%S')
@@ -152,7 +160,7 @@ def alert_worker():
             if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
                 logger.warning("Telegram TOKEN эсвэл CHAT_ID тохируулаагүй байна.")
             else:
-                if video_saved and os.path.exists(video_path):
+                if video_saved and video_path and os.path.exists(video_path):
                     ok = send_telegram_video(TELEGRAM_TOKEN, TELEGRAM_CHAT_ID, video_path, caption)
                     if not ok:
                         # Видео явуулж чадахгүй бол зураг явуулна
@@ -160,8 +168,10 @@ def alert_worker():
                 else:
                     send_telegram_photo(TELEGRAM_TOKEN, TELEGRAM_CHAT_ID, tg_photo_path, caption)
 
-            if os.path.exists(tg_photo_path):
+            if tg_photo_path and os.path.exists(tg_photo_path):
                 os.remove(tg_photo_path)
+            if video_path and os.path.exists(video_path):
+                os.remove(video_path)
 
         except Exception as e:
             logger.error(f"Alert Worker алдаа: {e}", exc_info=True)

@@ -1,15 +1,15 @@
-from pydantic import BaseModel, EmailStr, field_validator
-from typing import Optional
 import re
+
+from pydantic import BaseModel, EmailStr, field_validator
 
 
 class UserCreate(BaseModel):
     username: str
     email: EmailStr
-    phone_number: Optional[str] = None
+    phone_number: str | None = None
     password: str
-    full_name: Optional[str] = None
-    org_name: Optional[str] = None
+    full_name: str | None = None
+    org_name: str | None = None
 
     @field_validator("username")
     @classmethod
@@ -43,10 +43,10 @@ class TokenResponse(BaseModel):
 
 class UserBrief(BaseModel):
     username: str
-    full_name: Optional[str] = None
+    full_name: str | None = None
     role: str = "user"
-    org_id: Optional[int] = None
-    org_name: Optional[str] = None
+    org_id: int | None = None
+    org_name: str | None = None
 
 
 class ForgotPasswordRequest(BaseModel):

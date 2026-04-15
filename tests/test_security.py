@@ -2,9 +2,9 @@
 
 import os
 import sys
-import time
-import pytest
 from datetime import timedelta
+
+import pytest
 from fastapi import HTTPException
 
 # Ensure imports work
@@ -16,16 +16,14 @@ if SHOPLIFT_DIR not in sys.path:
 os.environ.setdefault("SECRET_KEY", "test-secret-key-for-pytest-only-do-not-use-in-prod")
 
 from shoplift_detector.app.core.security import (
-    verify_password,
-    get_password_hash,
-    create_access_token,
-    validate_password_strength,
-    _decode_token,
-    MIN_PASSWORD_LENGTH,
-    SECRET_KEY,
     ALGORITHM,
+    SECRET_KEY,
+    _decode_token,
+    create_access_token,
+    get_password_hash,
+    validate_password_strength,
+    verify_password,
 )
-
 
 # ---------------------------------------------------------------------------
 # Password hashing

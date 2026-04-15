@@ -1,7 +1,13 @@
-from sqlalchemy import String, Integer, ForeignKey, Boolean, Text
+from typing import TYPE_CHECKING
+
+from sqlalchemy import Boolean, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from typing import Optional
+
 from .base import Base, TimestampMixin
+
+if TYPE_CHECKING:
+    from .alert import Alert
+    from .store import Store
 
 
 class Camera(Base, TimestampMixin):
@@ -18,7 +24,7 @@ class Camera(Base, TimestampMixin):
     is_ai_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
     # Legacy support
-    organization_id: Mapped[Optional[int]] = mapped_column(
+    organization_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True, index=True
     )
 

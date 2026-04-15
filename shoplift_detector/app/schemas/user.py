@@ -1,17 +1,17 @@
-from pydantic import BaseModel
-from typing import Optional, List
 from datetime import datetime
+
+from pydantic import BaseModel
 
 
 class UserResponse(BaseModel):
     id: int
     username: str
     email: str
-    phone_number: Optional[str] = None
-    full_name: Optional[str] = None
+    phone_number: str | None = None
+    full_name: str | None = None
     role: str
-    organization_id: Optional[int] = None
-    organization_name: Optional[str] = None
+    organization_id: int | None = None
+    organization_name: str | None = None
     is_active: bool
     created_at: datetime
 
@@ -23,11 +23,11 @@ class UserRoleUpdate(BaseModel):
 
 
 class UserOrgUpdate(BaseModel):
-    organization_id: Optional[int] = None
+    organization_id: int | None = None
 
 
 class UserList(BaseModel):
-    items: List[UserResponse]
+    items: list[UserResponse]
     total: int
 
 

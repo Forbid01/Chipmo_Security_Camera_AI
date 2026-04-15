@@ -1,8 +1,8 @@
 """Tests for authentication endpoints: /register, /token, /users/me."""
 
-import pytest
-from unittest.mock import AsyncMock, patch, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
 
 # ---------------------------------------------------------------------------
 # Registration tests
@@ -21,7 +21,7 @@ class TestRegistration:
         # FastAPI-ийн dependency injection-ийг патчлах нь хамгийн найдвартай арга
         with patch("shoplift_detector.main.get_db") as mock_get_db:
             mock_get_db.return_value.__anext__.return_value = AsyncMock()
-            
+
             # UserRepository патчлахдаа main.py эсвэл routers/auth.py-г ашигла
             with patch("shoplift_detector.main.UserRepository", return_value=mock_repo):
                 resp = await client.post("/register", json=test_user_data)

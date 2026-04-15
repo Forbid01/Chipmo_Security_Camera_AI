@@ -1,8 +1,9 @@
 import logging
-from typing import List, Optional, Dict, Any
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import text
+from typing import Any
+
 from app.schemas.camera import CameraCreate, CameraUpdate
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
 
@@ -11,7 +12,7 @@ class CameraRepository:
     def __init__(self, db: AsyncSession):
         self.db = db
 
-    async def create(self, data: CameraCreate) -> Optional[int]:
+    async def create(self, data: CameraCreate) -> int | None:
         query = text("""
             INSERT INTO cameras (name, url, camera_type, store_id, is_ai_enabled, organization_id)
             VALUES (:name, :url, :type, :store_id, :ai, :org_id)
@@ -26,7 +27,7 @@ class CameraRepository:
         row = result.fetchone()
         return row[0] if row else None
 
-    async def get_all(self) -> List[Dict[str, Any]]:
+    async def get_all(self) -> list[dict[str, Any]]:
         query = text("""
             SELECT c.*, o.name as organization_name, s.name as store_name
             FROM cameras c
@@ -37,7 +38,7 @@ class CameraRepository:
         result = await self.db.execute(query)
         return [dict(row) for row in result.mappings().fetchall()]
 
-    async def get_by_store(self, store_id: int) -> List[Dict[str, Any]]:
+    async def get_by_store(self, store_id: int) -> list[dict[str, Any]]:
         query = text("""
             SELECT c.*, s.name as store_name
             FROM cameras c
@@ -48,7 +49,7 @@ class CameraRepository:
         result = await self.db.execute(query, {"store_id": store_id})
         return [dict(row) for row in result.mappings().fetchall()]
 
-    async def get_by_organization(self, org_id: int) -> List[Dict[str, Any]]:
+    async def get_by_organization(self, org_id: int) -> list[dict[str, Any]]:
         query = text("""
             SELECT c.*, s.name as store_name, o.name as organization_name
             FROM cameras c
@@ -60,7 +61,7 @@ class CameraRepository:
         result = await self.db.execute(query, {"org_id": org_id})
         return [dict(row) for row in result.mappings().fetchall()]
 
-    async def get_active_cameras(self) -> List[Dict[str, Any]]:
+    async def get_active_cameras(self) -> list[dict[str, Any]]:
         """AI болон camera service-д зориулсан - бүх идэвхтэй камерууд."""
         query = text("""
             SELECT c.*, s.name as store_name, s.alert_threshold, s.alert_cooldown

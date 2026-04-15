@@ -1,8 +1,9 @@
 import logging
-from typing import List, Optional, Dict, Any
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import text
+from typing import Any
+
 from app.schemas.store import StoreCreate, StoreUpdate
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
 
@@ -11,7 +12,7 @@ class StoreRepository:
     def __init__(self, db: AsyncSession):
         self.db = db
 
-    async def create(self, data: StoreCreate) -> Optional[int]:
+    async def create(self, data: StoreCreate) -> int | None:
         query = text("""
             INSERT INTO stores (name, address, organization_id, alert_threshold, alert_cooldown, telegram_chat_id)
             VALUES (:name, :address, :org_id, :threshold, :cooldown, :telegram_chat_id)
@@ -26,7 +27,7 @@ class StoreRepository:
         row = result.fetchone()
         return row[0] if row else None
 
-    async def get_by_id(self, store_id: int) -> Optional[Dict[str, Any]]:
+    async def get_by_id(self, store_id: int) -> dict[str, Any] | None:
         query = text("""
             SELECT s.*, o.name as organization_name,
                    (SELECT COUNT(*) FROM cameras c WHERE c.store_id = s.id) as camera_count
@@ -38,7 +39,7 @@ class StoreRepository:
         row = result.mappings().fetchone()
         return dict(row) if row else None
 
-    async def get_all(self) -> List[Dict[str, Any]]:
+    async def get_all(self) -> list[dict[str, Any]]:
         query = text("""
             SELECT s.*, o.name as organization_name,
                    (SELECT COUNT(*) FROM cameras c WHERE c.store_id = s.id) as camera_count
@@ -49,7 +50,7 @@ class StoreRepository:
         result = await self.db.execute(query)
         return [dict(row) for row in result.mappings().fetchall()]
 
-    async def get_by_organization(self, org_id: int) -> List[Dict[str, Any]]:
+    async def get_by_organization(self, org_id: int) -> list[dict[str, Any]]:
         query = text("""
             SELECT s.*, o.name as organization_name,
                    (SELECT COUNT(*) FROM cameras c WHERE c.store_id = s.id) as camera_count

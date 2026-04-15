@@ -1,6 +1,6 @@
 import logging
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 class AlertRepository:
     def __init__(self, db: AsyncSession):
         self.db = db
-        self._column_cache: Dict[str, set[str]] = {}
+        self._column_cache: dict[str, set[str]] = {}
 
     async def _get_table_columns(self, table_name: str) -> set[str]:
         if table_name not in self._column_cache:
@@ -29,14 +29,14 @@ class AlertRepository:
 
     async def _build_alert_query_parts(
         self, organization_id: int = None, store_id: int = None
-    ) -> tuple[str, Dict[str, Any]]:
+    ) -> tuple[str, dict[str, Any]]:
         alerts_columns = await self._get_table_columns("alerts")
         cameras_columns = await self._get_table_columns("cameras")
         has_alert_store_id = "store_id" in alerts_columns
         has_alert_camera_id = "camera_id" in alerts_columns
         has_camera_store_id = "store_id" in cameras_columns
 
-        params: Dict[str, Any] = {}
+        params: dict[str, Any] = {}
         conditions = []
 
         if organization_id:
@@ -112,7 +112,7 @@ class AlertRepository:
         camera_id: int = None,
         confidence_score: float = None,
         video_path: str = None,
-    ) -> Optional[int]:
+    ) -> int | None:
         check = text("""
             SELECT event_time FROM alerts
             WHERE person_id = :pid ORDER BY event_time DESC LIMIT 1
@@ -161,7 +161,7 @@ class AlertRepository:
         store_id: int = None,
         limit: int = 20,
         offset: int = 0,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         query_sql, params = await self._build_alert_query_parts(organization_id, store_id)
         params.update({"limit": limit, "offset": offset})
         query = text(f"""
@@ -184,7 +184,7 @@ class AlertRepository:
         store_id: int = None,
         limit: int = 50,
         offset: int = 0,
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         query_sql, params = await self._build_alert_query_parts(organization_id, store_id)
         params.update({"limit": limit, "offset": offset})
         query = text(f"""

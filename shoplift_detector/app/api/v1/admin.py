@@ -1,14 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from app.core.security import require_super_admin
-from app.db.session import get_db
-from app.db.repository.users import UserRepository
-from app.db.repository.alerts import AlertRepository
+from app.core.security import SuperAdmin
 from app.db.repository.stores import StoreRepository
+from app.db.repository.users import UserRepository
+from app.db.session import DB
 from app.schemas.common import APIResponse, StatsResponse
-from app.schemas.user import UserRoleUpdate, UserOrgUpdate
 from app.schemas.organization import OrganizationCreate
+from app.schemas.user import UserOrgUpdate, UserRoleUpdate
+from fastapi import APIRouter, HTTPException
 
 router = APIRouter()
 
@@ -18,31 +15,20 @@ VALID_ROLES = {"user", "admin", "super_admin"}
 # --- Organizations ---
 
 @router.get("/organizations")
-async def get_organizations(
-    admin: dict = Depends(require_super_admin),
-    db: AsyncSession = Depends(get_db),
-):
+async def get_organizations(admin: SuperAdmin, db: DB):
     repo = UserRepository(db)
     return await repo.get_all_organizations()
 
 
 @router.post("/organizations", response_model=APIResponse)
-async def create_organization(
-    data: OrganizationCreate,
-    admin: dict = Depends(require_super_admin),
-    db: AsyncSession = Depends(get_db),
-):
+async def create_organization(data: OrganizationCreate, admin: SuperAdmin, db: DB):
     repo = UserRepository(db)
     org_id = await repo.create_organization(data.name)
     return APIResponse(message="Байгууллага нэмэгдлээ", data={"org_id": org_id})
 
 
 @router.delete("/organizations/{org_id}", response_model=APIResponse)
-async def delete_organization(
-    org_id: int,
-    admin: dict = Depends(require_super_admin),
-    db: AsyncSession = Depends(get_db),
-):
+async def delete_organization(org_id: int, admin: SuperAdmin, db: DB):
     repo = UserRepository(db)
     success = await repo.delete_organization(org_id)
     if not success:
@@ -53,21 +39,13 @@ async def delete_organization(
 # --- Users ---
 
 @router.get("/users")
-async def get_users(
-    admin: dict = Depends(require_super_admin),
-    db: AsyncSession = Depends(get_db),
-):
+async def get_users(admin: SuperAdmin, db: DB):
     repo = UserRepository(db)
     return await repo.get_all_users()
 
 
 @router.put("/users/{user_id}/role", response_model=APIResponse)
-async def update_user_role(
-    user_id: int,
-    data: UserRoleUpdate,
-    admin: dict = Depends(require_super_admin),
-    db: AsyncSession = Depends(get_db),
-):
+async def update_user_role(user_id: int, data: UserRoleUpdate, admin: SuperAdmin, db: DB):
     if data.role not in VALID_ROLES:
         raise HTTPException(status_code=400, detail=f"Role '{data.role}' буруу байна")
     repo = UserRepository(db)
@@ -78,12 +56,7 @@ async def update_user_role(
 
 
 @router.put("/users/{user_id}/organization", response_model=APIResponse)
-async def update_user_org(
-    user_id: int,
-    data: UserOrgUpdate,
-    admin: dict = Depends(require_super_admin),
-    db: AsyncSession = Depends(get_db),
-):
+async def update_user_org(user_id: int, data: UserOrgUpdate, admin: SuperAdmin, db: DB):
     repo = UserRepository(db)
     success = await repo.update_user_organization(user_id, data.organization_id)
     if not success:
@@ -92,11 +65,7 @@ async def update_user_org(
 
 
 @router.delete("/users/{user_id}", response_model=APIResponse)
-async def delete_user(
-    user_id: int,
-    admin: dict = Depends(require_super_admin),
-    db: AsyncSession = Depends(get_db),
-):
+async def delete_user(user_id: int, admin: SuperAdmin, db: DB):
     repo = UserRepository(db)
     target = await repo.get_user_by_id(user_id)
     if target and target.get("username") == admin.get("username"):
@@ -110,10 +79,7 @@ async def delete_user(
 # --- Stats ---
 
 @router.get("/stats", response_model=StatsResponse)
-async def get_stats(
-    admin: dict = Depends(require_super_admin),
-    db: AsyncSession = Depends(get_db),
-):
+async def get_stats(admin: SuperAdmin, db: DB):
     repo = UserRepository(db)
     stats = await repo.get_stats()
     store_repo = StoreRepository(db)

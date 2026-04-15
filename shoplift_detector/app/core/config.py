@@ -1,8 +1,8 @@
 import os
 from functools import lru_cache
-from pydantic_settings import BaseSettings
+
 from pydantic import field_validator
-from typing import List, Optional
+from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 1440
 
     # Database
-    DATABASE_URL: Optional[str] = None
+    DATABASE_URL: str | None = None
     DB_NAME: str = "postgres"
     DB_USER: str = "postgres"
     DB_PASSWORD: str = ""
@@ -26,16 +26,16 @@ class Settings(BaseSettings):
     DB_PORT: int = 5432
 
     # Telegram
-    TELEGRAM_TOKEN: Optional[str] = None
-    TELEGRAM_CHAT_ID: Optional[str] = None
+    TELEGRAM_TOKEN: str | None = None
+    TELEGRAM_CHAT_ID: str | None = None
 
     # CORS
-    ALLOWED_ORIGINS: List[str] = ["*"]
+    ALLOWED_ORIGINS: list[str] = ["*"]
 
     # Email
-    MAIL_USERNAME: Optional[str] = None
-    MAIL_PASSWORD: Optional[str] = None
-    MAIL_FROM: Optional[str] = None
+    MAIL_USERNAME: str | None = None
+    MAIL_PASSWORD: str | None = None
+    MAIL_FROM: str | None = None
 
     # Camera defaults
     WIFI_CAMERA_URL: str = ""
@@ -44,11 +44,30 @@ class Settings(BaseSettings):
 
     # AI
     AI_SCORE_ALERT_TRIGGER: float = 80.0
-    AI_ALERT_COOLDOWN: int = 15
+    AI_ALERT_COOLDOWN: int = 60
     AI_AUTO_LEARN: bool = True
+    AI_FRAME_SKIP: int = 5
+    AI_INPUT_SIZE: int = 640
+    AI_QUEUE_MAXSIZE: int = 8
+
+    # RTSP reconnect
+    RTSP_RECONNECT_BASE: float = 1.0
+    RTSP_RECONNECT_MAX: float = 60.0
+
+    # Storage backend: local | cloudinary | s3
+    STORAGE_BACKEND: str = "local"
+    PUBLIC_BASE_URL: str = ""
+    CLOUDINARY_URL: str | None = None
+    CLOUDINARY_FOLDER: str = "chipmo/alerts"
+    S3_BUCKET: str | None = None
+    S3_REGION: str = "us-east-1"
+    S3_PREFIX: str = "alerts"
+    S3_ENDPOINT_URL: str | None = None
+    AWS_ACCESS_KEY_ID: str | None = None
+    AWS_SECRET_ACCESS_KEY: str | None = None
 
     # Sentry
-    SENTRY_DSN: Optional[str] = None
+    SENTRY_DSN: str | None = None
 
     @field_validator("ALLOWED_ORIGINS", mode="before")
     @classmethod
@@ -82,7 +101,7 @@ class Settings(BaseSettings):
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 
 
-@lru_cache()
+@lru_cache
 def get_settings() -> Settings:
     return Settings()
 

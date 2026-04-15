@@ -4,10 +4,10 @@ import pytest
 
 from shoplift_detector.app.services.pricing_service import (
     PLATFORM_FEE,
+    calculate_quote,
     get_camera_rate,
     get_setup_rate,
     get_visit_fee,
-    calculate_quote,
 )
 
 

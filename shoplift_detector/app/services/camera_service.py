@@ -1,10 +1,12 @@
-import cv2
-import time
-import queue
-import logging
-import threading
 import asyncio
+import contextlib
+import logging
+import queue
+import threading
+import time
+
 import app.core.state as state
+import cv2
 from app.core.config import DEFAULT_CAMERA_SOURCES
 from app.db.repository.users import UserRepository
 
@@ -48,15 +50,12 @@ def capture_stream(source, camera_name):
             elif camera_name == "Axis-Camera":
                 state.latest_axis_frame = frame.copy()
 
-            if camera_name in ["Mac-Camera", "Axis-Camera"]:
-                if not state.ai_input_queue.full():
-                    try:
-                        state.ai_input_queue.put({
-                            "frame": frame.copy(),
-                            "source": camera_name
-                        }, block=False)
-                    except queue.Full:
-                        pass
+            if camera_name in ["Mac-Camera", "Axis-Camera"] and not state.ai_input_queue.full():
+                with contextlib.suppress(queue.Full):
+                    state.ai_input_queue.put({
+                        "frame": frame.copy(),
+                        "source": camera_name
+                    }, block=False)
 
             if camera_name in ["Mac-Camera", "Axis-Camera"]:
                 with state.buffer_lock:
@@ -110,11 +109,11 @@ def video_capture():
     # 1. Async логикийг ажиллуулах шинэ loop үүсгэх
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
-    
+
     try:
         # 2. load_camera_sources-ыг дуустал нь хүлээж үр дүнг авах
         sources = loop.run_until_complete(load_camera_sources())
-        
+
         threads = []
         for source, camera_name in sources:
             thread = threading.Thread(
@@ -127,10 +126,10 @@ def video_capture():
             threads.append(thread)
 
         logger.info(f"{len(threads)} камерын дамжуулалт амжилттай эхэллээ.")
-        
+
         for thread in threads:
             thread.join()
-            
+
     except Exception as e:
         logger.error(f"video_capture алдаа: {e}")
     finally:

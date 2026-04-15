@@ -1,15 +1,14 @@
 """Хэрэглэгч өөрийн байгууллагын камеруудыг удирдах endpoint-ууд.
 Super admin биш ч камер нэмж, засаж, устгаж чадна - зөвхөн өөрийн org-д."""
 
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from app.core.security import get_current_user
-from app.db.session import get_db
+from app.core.security import CurrentUser
 from app.db.repository.camera_repo import CameraRepository
 from app.db.repository.stores import StoreRepository
+from app.db.session import DB
 from app.schemas.camera import CameraCreate, CameraUpdate
 from app.schemas.common import APIResponse
+from fastapi import APIRouter, HTTPException
+from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter()
 
@@ -26,10 +25,7 @@ async def _verify_store_ownership(store_id: int, user: dict, db: AsyncSession):
 
 
 @router.get("")
-async def my_cameras(
-    user: dict = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
+async def my_cameras(user: CurrentUser, db: DB):
     """Хэрэглэгчийн байгууллагын бүх камерууд."""
     repo = CameraRepository(db)
     org_id = user.get("org_id")
@@ -41,10 +37,7 @@ async def my_cameras(
 
 
 @router.get("/stores")
-async def my_stores(
-    user: dict = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
+async def my_stores(user: CurrentUser, db: DB):
     """Хэрэглэгчийн байгууллагын бүх дэлгүүрүүд."""
     store_repo = StoreRepository(db)
     org_id = user.get("org_id")
@@ -56,11 +49,7 @@ async def my_stores(
 
 
 @router.post("", response_model=APIResponse)
-async def add_my_camera(
-    data: CameraCreate,
-    user: dict = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
+async def add_my_camera(data: CameraCreate, user: CurrentUser, db: DB):
     """Хэрэглэгч өөрийн байгууллагын дэлгүүрт камер нэмэх."""
     await _verify_store_ownership(data.store_id, user, db)
 
@@ -70,7 +59,6 @@ async def add_my_camera(
     repo = CameraRepository(db)
     cam_id = await repo.create(data)
 
-    # CameraManager-д бүртгэх (шууд ажиллаж эхэлнэ)
     from app.services.camera_manager import camera_manager
     camera_manager.register_camera(
         camera_id=cam_id,
@@ -85,22 +73,19 @@ async def add_my_camera(
 
 
 @router.put("/{camera_id}", response_model=APIResponse)
-async def update_my_camera(
-    camera_id: int,
-    data: CameraUpdate,
-    user: dict = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
+async def update_my_camera(camera_id: int, data: CameraUpdate, user: CurrentUser, db: DB):
     """Хэрэглэгч өөрийн байгууллагын камер засах."""
     repo = CameraRepository(db)
 
-    # Одоогийн камерын мэдээлэл авах
-    all_cams = await repo.get_by_organization(user.get("org_id")) if user.get("role") != "super_admin" else await repo.get_all()
+    all_cams = (
+        await repo.get_by_organization(user.get("org_id"))
+        if user.get("role") != "super_admin"
+        else await repo.get_all()
+    )
     cam = next((c for c in all_cams if c["id"] == camera_id), None)
     if not cam:
         raise HTTPException(status_code=404, detail="Камер олдсонгүй эсвэл эрхгүй")
 
-    # Шинэ store_id байвал эрх шалгах
     if data.store_id:
         await _verify_store_ownership(data.store_id, user, db)
 
@@ -108,7 +93,6 @@ async def update_my_camera(
     if not success:
         raise HTTPException(status_code=400, detail="Шинэчлэх боломжгүй")
 
-    # CameraManager дахин бүртгэх
     from app.services.camera_manager import camera_manager
     camera_manager.unregister_camera(camera_id)
 
@@ -130,15 +114,15 @@ async def update_my_camera(
 
 
 @router.delete("/{camera_id}", response_model=APIResponse)
-async def delete_my_camera(
-    camera_id: int,
-    user: dict = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
+async def delete_my_camera(camera_id: int, user: CurrentUser, db: DB):
     """Хэрэглэгч өөрийн байгууллагын камер устгах."""
     repo = CameraRepository(db)
 
-    all_cams = await repo.get_by_organization(user.get("org_id")) if user.get("role") != "super_admin" else await repo.get_all()
+    all_cams = (
+        await repo.get_by_organization(user.get("org_id"))
+        if user.get("role") != "super_admin"
+        else await repo.get_all()
+    )
     cam = next((c for c in all_cams if c["id"] == camera_id), None)
     if not cam:
         raise HTTPException(status_code=404, detail="Камер олдсонгүй эсвэл эрхгүй")

@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Dict, Optional
+from typing import Any
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 class FeedbackRepository:
     def __init__(self, db: AsyncSession):
         self.db = db
-        self._column_cache: Dict[str, set[str]] = {}
+        self._column_cache: dict[str, set[str]] = {}
 
     async def _get_table_columns(self, table_name: str) -> set[str]:
         if table_name not in self._column_cache:
@@ -23,7 +23,7 @@ class FeedbackRepository:
             self._column_cache[table_name] = {row[0] for row in result.fetchall()}
         return self._column_cache[table_name]
 
-    async def _get_alert_feedback_context(self, alert_id: int) -> Optional[Dict[str, Any]]:
+    async def _get_alert_feedback_context(self, alert_id: int) -> dict[str, Any] | None:
         alerts_columns = await self._get_table_columns("alerts")
         cameras_columns = await self._get_table_columns("cameras")
         has_alert_store_id = "store_id" in alerts_columns
@@ -59,7 +59,7 @@ class FeedbackRepository:
         feedback_type: str,
         reviewer_id: int = None,
         notes: str = None,
-    ) -> Optional[int]:
+    ) -> int | None:
         alert = await self._get_alert_feedback_context(alert_id)
         if not alert:
             return None
@@ -99,7 +99,7 @@ class FeedbackRepository:
         row = result.fetchone()
         return row[0] if row else None
 
-    async def get_stats(self, store_id: int = None) -> Dict[str, Any]:
+    async def get_stats(self, store_id: int = None) -> dict[str, Any]:
         conditions = ""
         params = {}
         if store_id:
@@ -138,7 +138,7 @@ class FeedbackRepository:
             "precision": round(precision, 3) if precision else None,
         }
 
-    async def get_learning_status(self, store_id: int = None) -> Dict[str, Any]:
+    async def get_learning_status(self, store_id: int = None) -> dict[str, Any]:
         stats = await self.get_stats(store_id)
 
         threshold = 80.0

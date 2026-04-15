@@ -1,14 +1,16 @@
 """Dynamic camera manager - олон дэлгүүр, олон камерыг удирдах.
 Runtime-д камер нэмэх/хасах боломжтой, restart шаарддаггүй."""
 
-import cv2
-import time
-import queue
+import contextlib
 import logging
+import queue
 import threading
-from typing import Dict, Optional, List
+import time
 from dataclasses import dataclass, field
 from datetime import datetime
+
+import cv2
+from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -24,11 +26,11 @@ class CameraState:
     alert_threshold: float = 80.0
     alert_cooldown: int = 15
     # Runtime state
-    thread: Optional[threading.Thread] = None
-    latest_frame: Optional[object] = None  # numpy array
+    thread: threading.Thread | None = None
+    latest_frame: object | None = None  # numpy array
     is_connected: bool = False
     fps: float = 0.0
-    last_frame_at: Optional[datetime] = None
+    last_frame_at: datetime | None = None
     _stop_event: threading.Event = field(default_factory=threading.Event)
 
 
@@ -36,9 +38,11 @@ class CameraManager:
     """Бүх камерыг динамикаар удирдах singleton."""
 
     def __init__(self):
-        self._cameras: Dict[int, CameraState] = {}
+        self._cameras: dict[int, CameraState] = {}
         self._lock = threading.Lock()
-        self.ai_input_queue = queue.Queue(maxsize=8)
+        self.ai_input_queue: queue.Queue = queue.Queue(
+            maxsize=settings.AI_QUEUE_MAXSIZE
+        )
 
     def register_camera(self, camera_id: int, store_id: int, name: str,
                         url: str, camera_type: str, is_ai_enabled: bool = True,
@@ -73,81 +77,107 @@ class CameraManager:
         state.thread = thread
         thread.start()
 
+    def _open_capture(self, state: CameraState, source):
+        cap = cv2.VideoCapture(source)
+        cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+        return cap
+
+    def _enqueue_ai_frame(self, payload: dict):
+        """Bounded queue with drop-oldest semantics — newest frames win
+        so the AI worker never processes stale data during bursts."""
+        try:
+            self.ai_input_queue.put_nowait(payload)
+        except queue.Full:
+            with contextlib.suppress(queue.Empty):
+                self.ai_input_queue.get_nowait()
+            with contextlib.suppress(queue.Full):
+                self.ai_input_queue.put_nowait(payload)
+
     def _capture_loop(self, state: CameraState):
         source = state.url
         if state.camera_type == "usb":
-            try:
+            with contextlib.suppress(ValueError):
                 source = int(source)
-            except ValueError:
-                pass
 
         logger.info(f"[{state.name}] Connecting to {source}")
-        cap = cv2.VideoCapture(source)
-        cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+        cap = self._open_capture(state, source)
+        backoff = settings.RTSP_RECONNECT_BASE
+        max_backoff = settings.RTSP_RECONNECT_MAX
+        skip_n = max(1, settings.AI_FRAME_SKIP)
+        target = max(64, settings.AI_INPUT_SIZE)
 
-        if not cap.isOpened():
-            logger.error(f"[{state.name}] Connection failed")
-            state.is_connected = False
-            return
-
-        state.is_connected = True
-        logger.info(f"[{state.name}] Connected successfully")
         frame_count = 0
+        ai_counter = 0
         fps_start = time.time()
+        state.is_connected = cap.isOpened()
+        if state.is_connected:
+            logger.info(f"[{state.name}] Connected successfully")
 
         try:
             while not state._stop_event.is_set():
+                if not state.is_connected:
+                    logger.warning(
+                        f"[{state.name}] Reconnecting in {backoff:.1f}s"
+                    )
+                    if state._stop_event.wait(backoff):
+                        break
+                    backoff = min(backoff * 2, max_backoff)
+                    cap.release()
+                    cap = self._open_capture(state, source)
+                    if cap.isOpened():
+                        state.is_connected = True
+                        backoff = settings.RTSP_RECONNECT_BASE
+                        logger.info(f"[{state.name}] Reconnected")
+                    continue
+
                 success, frame = cap.read()
                 if not success:
                     state.is_connected = False
-                    logger.warning(f"[{state.name}] Disconnected, reconnecting...")
-                    time.sleep(2)
-                    cap.release()
-                    cap = cv2.VideoCapture(source)
-                    cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-                    if cap.isOpened():
-                        state.is_connected = True
                     continue
 
-                state.latest_frame = frame.copy()
+                state.latest_frame = frame
                 state.last_frame_at = datetime.now()
                 frame_count += 1
 
-                # FPS calculation
                 elapsed = time.time() - fps_start
                 if elapsed >= 5.0:
                     state.fps = round(frame_count / elapsed, 1)
                     frame_count = 0
                     fps_start = time.time()
 
-                # AI queue
-                if state.is_ai_enabled and not self.ai_input_queue.full():
-                    try:
-                        self.ai_input_queue.put_nowait({
-                            "frame": frame.copy(),
-                            "camera_id": state.camera_id,
-                            "store_id": state.store_id,
-                            "source": state.name,
-                            "threshold": state.alert_threshold,
-                            "cooldown": state.alert_cooldown,
-                        })
-                    except queue.Full:
-                        pass
+                ai_counter += 1
+                if state.is_ai_enabled and ai_counter % skip_n == 0:
+                    h, w = frame.shape[:2]
+                    scale = target / max(h, w)
+                    small = (
+                        cv2.resize(frame, (int(w * scale), int(h * scale)))
+                        if scale < 1.0
+                        else frame
+                    )
+                    self._enqueue_ai_frame({
+                        "frame": small,
+                        "full_frame": frame,
+                        "camera_id": state.camera_id,
+                        "store_id": state.store_id,
+                        "source": state.name,
+                        "threshold": state.alert_threshold,
+                        "cooldown": state.alert_cooldown,
+                    })
 
-                time.sleep(0.02)
+                time.sleep(0.01)
         except Exception as e:
             logger.error(f"[{state.name}] Error: {e}")
         finally:
             cap.release()
             state.is_connected = False
 
-    def get_frame(self, camera_id: int) -> Optional[object]:
+    def get_frame(self, camera_id: int) -> object | None:
         state = self._cameras.get(camera_id)
         if state and state.latest_frame is not None:
             return state.latest_frame.copy()
         return None
 
-    def get_store_frames(self, store_id: int) -> List:
+    def get_store_frames(self, store_id: int) -> list:
         frames = []
         with self._lock:
             for state in self._cameras.values():
@@ -155,7 +185,7 @@ class CameraManager:
                     frames.append(state.latest_frame.copy())
         return frames
 
-    def get_all_status(self) -> List[dict]:
+    def get_all_status(self) -> list[dict]:
         statuses = []
         with self._lock:
             for cam_id, state in self._cameras.items():

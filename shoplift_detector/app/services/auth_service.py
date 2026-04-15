@@ -1,21 +1,22 @@
+import logging
 import random
 import string
-import logging
-import jwt 
-from datetime import datetime, timedelta, timezone
-from fastapi import HTTPException, status, Depends
+from datetime import UTC, datetime, timedelta
+
+import jwt
+from fastapi import Depends, HTTPException, status
 
 from ..core.security import (
-    verify_password,
-    get_password_hash,
-    create_access_token,
-    validate_password_strength,
-    oauth2_scheme,
+    ALGORITHM,
     SECRET_KEY,
-    ALGORITHM
+    create_access_token,
+    get_password_hash,
+    oauth2_scheme,
+    validate_password_strength,
+    verify_password,
 )
-from ..db.repository.users import UserRepository
 from ..db.repository.alerts import AlertRepository
+from ..db.repository.users import UserRepository
 from .email_service import send_otp_email
 
 logger = logging.getLogger(__name__)
@@ -25,7 +26,7 @@ alert_repo = AlertRepository()
 VALID_ROLES = {"user", "admin", "super_admin"}
 
 class AuthService:
-    
+
     # --- БҮРТГЭЛ БОЛОН НЭВТРЭЛТ ---
 
     @classmethod
@@ -70,20 +71,20 @@ class AuthService:
             username: str = payload.get("sub")
             org_id: int = payload.get("org_id")
             role: str = payload.get("role")
-            
+
             if username is None:
                 raise HTTPException(status_code=401, detail="Токен хүчингүй")
-                
+
             return {
                 "username": username,
                 "org_id": org_id,
                 "role": role
             }
-        except Exception:
+        except Exception as e:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Токен хүчингүй эсвэл хугацаа дууссан байна"
-            )
+            ) from e
 
     # --- АДМИН БОЛОН БАЙГУУЛЛАГЫН ҮЙЛДЛҮҮД (CRUD) ---
 
@@ -172,7 +173,7 @@ class AuthService:
             return False
 
         otp_code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=8))
-        expiry = datetime.now(timezone.utc) + timedelta(minutes=15)
+        expiry = datetime.now(UTC) + timedelta(minutes=15)
 
         await user_repo.update_recovery_data(user['id'], otp_code, expiry)
         success = await send_otp_email(email, otp_code)
@@ -181,14 +182,13 @@ class AuthService:
     @classmethod
     async def verify_recovery_code(cls, email: str, code: str):
         user = await user_repo.get_by_email(email)
-        if not user: return False
+        if not user:
+            return False
 
         db_code = user.get('recovery_code')
         db_expiry = user.get('recovery_code_expires')
 
-        if (db_code == code and db_expiry and db_expiry > datetime.now(timezone.utc)):
-            return True
-        return False
+        return bool(db_code == code and db_expiry and db_expiry > datetime.now(UTC))
 
     @classmethod
     async def reset_password(cls, email: str, code: str, new_password: str):
@@ -196,7 +196,8 @@ class AuthService:
             return False
 
         user = await user_repo.get_by_email(email)
-        if not user: return False
+        if not user:
+            return False
 
         validate_password_strength(new_password)
         hashed_pwd = get_password_hash(new_password)

@@ -1,9 +1,10 @@
-import os
-import logging
 import asyncio
+import logging
+import os
 import smtplib
-from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+
 from dotenv import load_dotenv
 
 # .env файл унших
@@ -17,7 +18,7 @@ def _send_email_sync(msg: MIMEMultipart):
     """
     mail_user = os.getenv("MAIL_USERNAME")
     mail_pass = os.getenv("MAIL_PASSWORD")
-    
+
     if not mail_user or not mail_pass:
         raise ValueError("MAIL_USERNAME эсвэл MAIL_PASSWORD тохируулаагүй байна.")
 
@@ -35,7 +36,7 @@ def _send_email_sync(msg: MIMEMultipart):
 async def send_otp_email(receiver_email: str, otp_code: str):
     """Нууц үг сэргээх OTP кодыг асинхрон байдлаар илгээнэ."""
     mail_from = os.getenv("MAIL_FROM", os.getenv("MAIL_USERNAME"))
-    
+
     html = f"""
     <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 40px; background-color: #0f172a; color: #ffffff; text-align: center;">
         <div style="max-width: 500px; margin: 0 auto; background-color: #1e293b; padding: 30px; border-radius: 20px; border: 1px solid #334155; box-shadow: 0 10px 25px rgba(0,0,0,0.5);">
@@ -80,7 +81,7 @@ async def send_otp_email(receiver_email: str, otp_code: str):
 async def send_contact_email(name: str, email: str, subject: str, message: str):
     """Холбоо барих хүсэлтийг админ руу илгээнэ."""
     mail_from = os.getenv("MAIL_FROM", os.getenv("MAIL_USERNAME"))
-    
+
     html = f"""
     <div style="font-family: sans-serif; padding: 20px; background-color: #f9f9f9; color: #333;">
         <h2 style="color: #ef4444; border-bottom: 2px solid #ef4444; padding-bottom: 10px;">

@@ -1,8 +1,11 @@
+from __future__ import annotations
+
 import asyncio
+
+import app.core.state as state
 import cv2
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
-import app.core.state as state
 
 router = APIRouter()
 

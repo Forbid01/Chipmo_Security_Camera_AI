@@ -1,12 +1,13 @@
-import re
 import logging
-from datetime import datetime, timedelta, timezone
-from typing import Optional
+import re
+from datetime import UTC, datetime, timedelta
+from typing import Annotated
+
 import jwt
-from passlib.context import CryptContext
-from fastapi import Depends, HTTPException, status, Request, Response
-from fastapi.security import OAuth2PasswordBearer
 from app.core.config import settings
+from fastapi import Depends, HTTPException, Request, Response, status
+from fastapi.security import OAuth2PasswordBearer
+from passlib.context import CryptContext
 
 logger = logging.getLogger(__name__)
 
@@ -49,9 +50,9 @@ def get_password_hash(password: str) -> str:
     return pwd_context.hash(password)
 
 
-def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
+def create_access_token(data: dict, expires_delta: timedelta | None = None) -> str:
     to_encode = data.copy()
-    expire = datetime.now(timezone.utc) + (expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
+    expire = datetime.now(UTC) + (expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
@@ -72,7 +73,7 @@ def clear_auth_cookie(response: Response) -> None:
     response.delete_cookie(key=COOKIE_NAME, path="/")
 
 
-def _extract_token(request: Request, bearer_token: Optional[str] = None) -> Optional[str]:
+def _extract_token(request: Request, bearer_token: str | None = None) -> str | None:
     """Extract token from cookie first, then Authorization header."""
     # 1. Try httpOnly cookie
     token = request.cookies.get(COOKIE_NAME)
@@ -101,13 +102,16 @@ def _decode_token(token: str) -> dict:
             "role": payload.get("role"),
             "user_id": payload.get("user_id"),
         }
-    except (jwt.PyJWTError, jwt.ExpiredSignatureError):
-        raise credentials_exception
+    except (jwt.PyJWTError, jwt.ExpiredSignatureError) as e:
+        raise credentials_exception from e
+
+
+BearerToken = Annotated[str | None, Depends(oauth2_scheme)]
 
 
 async def get_current_user(
     request: Request,
-    bearer_token: Optional[str] = Depends(oauth2_scheme),
+    bearer_token: BearerToken,
 ) -> dict:
     token = _extract_token(request, bearer_token)
     if not token:
@@ -121,8 +125,8 @@ async def get_current_user(
 
 async def get_current_user_optional(
     request: Request,
-    bearer_token: Optional[str] = Depends(oauth2_scheme),
-) -> Optional[dict]:
+    bearer_token: BearerToken,
+) -> dict | None:
     token = _extract_token(request, bearer_token)
     if not token:
         return None
@@ -132,9 +136,13 @@ async def get_current_user_optional(
         return None
 
 
-async def require_role(*roles: str):
+CurrentUser = Annotated[dict, Depends(get_current_user)]
+OptionalUser = Annotated[dict | None, Depends(get_current_user_optional)]
+
+
+def require_role(*roles: str):
     """Dependency factory for role-based access control."""
-    async def checker(current_user: dict = Depends(get_current_user)) -> dict:
+    async def checker(current_user: CurrentUser) -> dict:
         if current_user.get("role") not in roles:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -144,7 +152,7 @@ async def require_role(*roles: str):
     return checker
 
 
-async def require_super_admin(current_user: dict = Depends(get_current_user)) -> dict:
+async def require_super_admin(current_user: CurrentUser) -> dict:
     if current_user.get("role") != "super_admin":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -153,10 +161,14 @@ async def require_super_admin(current_user: dict = Depends(get_current_user)) ->
     return current_user
 
 
-async def require_admin_or_above(current_user: dict = Depends(get_current_user)) -> dict:
+async def require_admin_or_above(current_user: CurrentUser) -> dict:
     if current_user.get("role") not in ("super_admin", "admin"):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Админ эрх шаардлагатай"
         )
     return current_user
+
+
+SuperAdmin = Annotated[dict, Depends(require_super_admin)]
+AdminOrAbove = Annotated[dict, Depends(require_admin_or_above)]

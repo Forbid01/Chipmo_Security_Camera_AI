@@ -1,11 +1,11 @@
 import asyncio
+
 import cv2
 import numpy as np
-from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import StreamingResponse
-
-from app.core.security import get_current_user
+from app.core.security import CurrentUser
 from app.services.camera_manager import camera_manager
+from fastapi import APIRouter
+from fastapi.responses import StreamingResponse
 
 router = APIRouter()
 
@@ -40,16 +40,14 @@ async def generate_store_frames(store_id: int):
         if len(frames) == 1:
             combined = frames[0]
         else:
-            # Grid layout
             target_h = 480
             resized = []
-            for f in frames[:4]:  # Max 4 cameras in grid
+            for f in frames[:4]:
                 h, w = f.shape[:2]
                 scale = target_h / h
                 resized.append(cv2.resize(f, (int(w * scale), target_h)))
 
             if len(resized) <= 2:
-                # Fill with black if widths differ
                 max_w = max(r.shape[1] for r in resized)
                 padded = []
                 for r in resized:
@@ -59,13 +57,11 @@ async def generate_store_frames(store_id: int):
                     padded.append(r)
                 combined = np.hstack(padded)
             else:
-                # 2x2 grid
                 row1 = np.hstack(resized[:2])
                 row2_frames = resized[2:4]
                 while len(row2_frames) < 2:
                     row2_frames.append(np.zeros_like(resized[0]))
                 row2 = np.hstack(row2_frames)
-                # Match widths
                 min_w = min(row1.shape[1], row2.shape[1])
                 row1 = row1[:, :min_w]
                 row2 = row2[:, :min_w]
@@ -81,10 +77,7 @@ async def generate_store_frames(store_id: int):
 
 
 @router.get("/feed/{camera_id}")
-async def video_feed(
-    camera_id: int,
-    user: dict = Depends(get_current_user),
-):
+async def video_feed(camera_id: int, user: CurrentUser):
     """Нэг камерын live stream (authenticated)."""
     return StreamingResponse(
         generate_camera_frames(camera_id),
@@ -93,10 +86,7 @@ async def video_feed(
 
 
 @router.get("/store/{store_id}")
-async def store_video_feed(
-    store_id: int,
-    user: dict = Depends(get_current_user),
-):
+async def store_video_feed(store_id: int, user: CurrentUser):
     """Дэлгүүрийн бүх камерыг grid-д нэгтгэсэн stream."""
     return StreamingResponse(
         generate_store_frames(store_id),

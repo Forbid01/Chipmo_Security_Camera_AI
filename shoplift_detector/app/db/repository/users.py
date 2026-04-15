@@ -1,8 +1,9 @@
 import logging
 from datetime import datetime
-from typing import List, Optional, Dict, Any
-from sqlalchemy.ext.asyncio import AsyncSession
+from typing import Any
+
 from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
 
@@ -12,7 +13,7 @@ class UserRepository:
         self.db = db
 
     async def create(self, username, email, phone_number, hashed_password,
-                     full_name=None, organization_id=None, role='user') -> Optional[int]:
+                     full_name=None, organization_id=None, role='user') -> int | None:
         query = text("""
             INSERT INTO users (username, email, phone_number, hashed_password, full_name, organization_id, role)
             VALUES (:username, :email, :phone_number, :hashed_password, :full_name, :organization_id, :role)
@@ -27,7 +28,7 @@ class UserRepository:
         row = result.fetchone()
         return row[0] if row else None
 
-    async def get_by_identifier(self, identifier: str) -> Optional[Dict[str, Any]]:
+    async def get_by_identifier(self, identifier: str) -> dict[str, Any] | None:
         query = text("""
             SELECT u.*, o.name as organization_name
             FROM users u
@@ -38,19 +39,19 @@ class UserRepository:
         row = result.mappings().fetchone()
         return dict(row) if row else None
 
-    async def get_by_email(self, email: str) -> Optional[Dict[str, Any]]:
+    async def get_by_email(self, email: str) -> dict[str, Any] | None:
         query = text("SELECT * FROM users WHERE email = :email AND is_active = TRUE")
         result = await self.db.execute(query, {"email": email})
         row = result.mappings().fetchone()
         return dict(row) if row else None
 
-    async def get_user_by_id(self, user_id: int) -> Optional[Dict[str, Any]]:
+    async def get_user_by_id(self, user_id: int) -> dict[str, Any] | None:
         query = text("SELECT * FROM users WHERE id = :id")
         result = await self.db.execute(query, {"id": user_id})
         row = result.mappings().fetchone()
         return dict(row) if row else None
 
-    async def get_all_users(self) -> List[Dict[str, Any]]:
+    async def get_all_users(self) -> list[dict[str, Any]]:
         query = text("""
             SELECT u.id, u.username, u.email, u.full_name, u.role,
                    u.organization_id, o.name as organization_name, u.is_active, u.created_at
@@ -99,14 +100,14 @@ class UserRepository:
 
     # --- Organizations ---
 
-    async def create_organization(self, name: str) -> Optional[int]:
+    async def create_organization(self, name: str) -> int | None:
         query = text("INSERT INTO organizations (name) VALUES (:name) RETURNING id")
         result = await self.db.execute(query, {"name": name})
         await self.db.commit()
         row = result.fetchone()
         return row[0] if row else None
 
-    async def get_all_organizations(self) -> List[Dict[str, Any]]:
+    async def get_all_organizations(self) -> list[dict[str, Any]]:
         query = text("SELECT id, name, created_at FROM organizations ORDER BY created_at DESC")
         result = await self.db.execute(query)
         return [dict(row) for row in result.mappings().fetchall()]
@@ -119,7 +120,7 @@ class UserRepository:
 
     # --- Cameras (legacy compat) ---
 
-    async def get_all_cameras(self) -> List[Dict[str, Any]]:
+    async def get_all_cameras(self) -> list[dict[str, Any]]:
         query = text("""
             SELECT c.*, o.name as organization_name, s.name as store_name
             FROM cameras c
@@ -130,7 +131,7 @@ class UserRepository:
         result = await self.db.execute(query)
         return [dict(row) for row in result.mappings().fetchall()]
 
-    async def get_stats(self) -> Dict[str, Any]:
+    async def get_stats(self) -> dict[str, Any]:
         query = text("""
             SELECT
                 (SELECT COUNT(*) FROM users WHERE is_active = TRUE) as users,

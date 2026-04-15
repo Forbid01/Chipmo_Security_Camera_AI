@@ -1,18 +1,19 @@
+from typing import Any
+
 from pydantic import BaseModel
-from typing import Optional, Any
 
 
 class APIResponse(BaseModel):
     status: str = "success"
-    message: Optional[str] = None
-    data: Optional[Any] = None
+    message: str | None = None
+    data: Any | None = None
 
 
 class APIError(BaseModel):
     status: str = "error"
     message: str
-    detail: Optional[Any] = None
-    code: Optional[str] = None
+    detail: Any | None = None
+    code: str | None = None
 
 
 class PaginationParams(BaseModel):
@@ -30,7 +31,7 @@ class HealthResponse(BaseModel):
     cameras: dict
     queues: dict
     database: str
-    ai_device: Optional[str] = None
+    ai_device: str | None = None
 
 
 class StatsResponse(BaseModel):

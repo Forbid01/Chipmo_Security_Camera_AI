@@ -1,12 +1,13 @@
-import os
-from fastapi import APIRouter, Depends, HTTPException, Request
-from sqlalchemy.ext.asyncio import AsyncSession
+from __future__ import annotations
 
-from app.core.security import get_current_user, require_super_admin
+import os
+
 from app.core.config import ALERTS_DIR
-from app.db.session import get_db
+from app.core.security import CurrentUser, SuperAdmin
 from app.db.repository.alerts import AlertRepository
+from app.db.session import DB
 from app.schemas.common import APIResponse
+from fastapi import APIRouter, HTTPException, Request
 
 router = APIRouter()
 
@@ -14,11 +15,11 @@ router = APIRouter()
 @router.get("")
 async def get_alerts(
     request: Request,
+    user: CurrentUser,
+    db: DB,
     limit: int = 20,
     offset: int = 0,
-    store_id: int = None,
-    user: dict = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    store_id: int | None = None,
 ):
     repo = AlertRepository(db)
     org_id = user.get("org_id")
@@ -41,33 +42,31 @@ async def get_alerts(
             continue
 
         file_name = os.path.basename(image_path)
-        video_name = file_name.replace('.jpg', '.mp4')
+        video_name = file_name.replace(".jpg", ".mp4")
         video_full_path = os.path.join(ALERTS_DIR, video_name)
-        alert['web_url'] = f"{base_url}/static/{file_name}"
-        alert['video_url'] = f"{base_url}/static/{video_name}" if os.path.exists(video_full_path) else None
+        alert["web_url"] = f"{base_url}/static/{file_name}"
+        alert["video_url"] = (
+            f"{base_url}/static/{video_name}" if os.path.exists(video_full_path) else None
+        )
 
     return {"status": "success", "data": alerts}
 
 
 @router.get("/admin")
 async def get_admin_alerts(
-    organization_id: int = None,
-    store_id: int = None,
+    admin: SuperAdmin,
+    db: DB,
+    organization_id: int | None = None,
+    store_id: int | None = None,
     limit: int = 50,
     offset: int = 0,
-    admin: dict = Depends(require_super_admin),
-    db: AsyncSession = Depends(get_db),
 ):
     repo = AlertRepository(db)
     return await repo.get_all_alerts_admin(organization_id, store_id, limit, offset)
 
 
 @router.put("/{alert_id}/reviewed", response_model=APIResponse)
-async def mark_reviewed(
-    alert_id: int,
-    admin: dict = Depends(require_super_admin),
-    db: AsyncSession = Depends(get_db),
-):
+async def mark_reviewed(alert_id: int, admin: SuperAdmin, db: DB):
     repo = AlertRepository(db)
     success = await repo.mark_alert_reviewed(alert_id)
     if not success:
@@ -76,11 +75,7 @@ async def mark_reviewed(
 
 
 @router.delete("/{alert_id}", response_model=APIResponse)
-async def delete_alert(
-    alert_id: int,
-    admin: dict = Depends(require_super_admin),
-    db: AsyncSession = Depends(get_db),
-):
+async def delete_alert(alert_id: int, admin: SuperAdmin, db: DB):
     repo = AlertRepository(db)
     success = await repo.delete_alert(alert_id)
     if not success:

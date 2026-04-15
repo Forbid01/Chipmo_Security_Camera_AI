@@ -1,35 +1,78 @@
-import sys
+import asyncio
 import os
+import random
+import string
+import sys
 import threading
-import uvicorn
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Request
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, JSONResponse
-from fastapi.middleware.cors import CORSMiddleware
-from slowapi import Limiter
-from slowapi.util import get_remote_address
-from slowapi.errors import RateLimitExceeded
-from starlette.middleware.base import BaseHTTPMiddleware
+from datetime import UTC, datetime, timedelta
+from typing import Annotated
 
-# Path setup
+import cv2
+import uvicorn
+
+# Path setup (must run before any `app.*` imports so the project root resolves)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
 
-from app.core.logging import setup_logging, get_logger
+from app.api.v1 import api_router  # noqa: E402
+from app.api.v1.admin import (  # noqa: E402
+    create_organization,
+    delete_organization,
+    delete_user,
+    get_organizations,
+    get_stats,
+    get_users,
+    update_user_org,
+    update_user_role,
+)
+from app.api.v1.alerts import delete_alert, get_admin_alerts, mark_reviewed  # noqa: E402
+from app.api.v1.cameras import (  # noqa: E402
+    create_camera,
+    delete_camera,
+    list_cameras,
+    update_camera,
+)
+from app.core.config import ALERTS_DIR, settings  # noqa: E402
+from app.core.logging import get_logger, setup_logging  # noqa: E402
+from app.core.security import (  # noqa: E402
+    create_access_token,
+    get_password_hash,
+    set_auth_cookie,
+    validate_password_strength,
+    verify_password,
+)
+from app.db.models import Base  # noqa: E402
+from app.db.repository.alerts import AlertRepository  # noqa: E402
+from app.db.repository.users import UserRepository  # noqa: E402
+from app.db.session import AsyncSessionLocal, engine  # noqa: E402
+from app.schemas.auth import (  # noqa: E402
+    ForgotPasswordRequest,
+    ResetPasswordRequest,
+    VerifyCodeRequest,
+)
+from app.schemas.auth import UserCreate as UserCreateSchema  # noqa: E402
+from app.schemas.user import ContactForm  # noqa: E402
+from app.services.ai_service import ai_inference  # noqa: E402
+from app.services.alert_service import alert_worker  # noqa: E402
+from app.services.camera_manager import camera_manager  # noqa: E402
+from app.services.email_service import send_contact_email, send_otp_email  # noqa: E402
+from fastapi import Depends, FastAPI, HTTPException, Request, Response  # noqa: E402
+from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse  # noqa: E402
+from fastapi.security import OAuth2PasswordRequestForm  # noqa: E402
+from fastapi.staticfiles import StaticFiles  # noqa: E402
+from slowapi import Limiter  # noqa: E402
+from slowapi.errors import RateLimitExceeded  # noqa: E402
+from slowapi.util import get_remote_address  # noqa: E402
+from starlette.middleware.base import BaseHTTPMiddleware  # noqa: E402
+
 setup_logging()
 logger = get_logger(__name__)
 
-from app.core.config import settings, ALERTS_DIR
-from app.db.session import engine
-from app.db.models import Base
-from app.api.v1 import api_router
-from app.services.camera_manager import camera_manager
 
-# Legacy imports for backward compat
-from app.services.alert_service import alert_worker
-from app.services.ai_service import ai_inference
+LoginForm = Annotated[OAuth2PasswordRequestForm, Depends()]
 
 
 # --- Security Headers Middleware ---
@@ -50,27 +93,20 @@ async def lifespan(app: FastAPI):
     # [STARTUP]
     logger.info("initializing_database")
 
-    # Create tables
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     logger.info("database_tables_created")
 
-    # Load cameras from DB and register them
     await _load_cameras_from_db()
 
-    # Configure Telegram notifier
     from app.services.telegram_notifier import telegram_notifier
     telegram_notifier.configure(settings.TELEGRAM_TOKEN)
 
-    # Start background services
     logger.info("starting_background_services")
     threading.Thread(target=alert_worker, daemon=True, name="alert-worker").start()
     threading.Thread(target=ai_inference, daemon=True, name="ai-inference").start()
-
-    # Start auto-learning scheduler
     threading.Thread(target=_auto_learning_loop, daemon=True, name="auto-learner").start()
 
-    # Sentry
     if settings.SENTRY_DSN:
         try:
             import sentry_sdk
@@ -87,7 +123,6 @@ async def lifespan(app: FastAPI):
 
 async def _load_cameras_from_db():
     """DB-ээс бүх идэвхтэй камеруудыг ачаалж, CameraManager-д бүртгэх."""
-    from app.db.session import AsyncSessionLocal
     from app.db.repository.camera_repo import CameraRepository
 
     try:
@@ -111,7 +146,6 @@ async def _load_cameras_from_db():
     except Exception as e:
         logger.error("camera_load_error", error=str(e))
 
-    # Register default cameras from .env (backward compat)
     from app.core.config import DEFAULT_CAMERA_SOURCES
     default_id = 9000
     for cam_type, source in DEFAULT_CAMERA_SOURCES.items():
@@ -128,7 +162,6 @@ async def _load_cameras_from_db():
 
 def _auto_learning_loop():
     """Background thread: тогтмол хугацаанд feedback-ээс суралцах."""
-    import asyncio
     import time
 
     loop = asyncio.new_event_loop()
@@ -136,7 +169,7 @@ def _auto_learning_loop():
 
     while True:
         try:
-            time.sleep(300)  # 5 минут тутамд
+            time.sleep(300)
             if settings.AI_AUTO_LEARN:
                 loop.run_until_complete(_run_auto_learning())
         except Exception as e:
@@ -144,7 +177,6 @@ def _auto_learning_loop():
 
 
 async def _run_auto_learning():
-    from app.db.session import AsyncSessionLocal
     from app.services.auto_learner import auto_learner
 
     async with AsyncSessionLocal() as db:
@@ -162,17 +194,18 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Rate limiter
 limiter = Limiter(key_func=get_remote_address)
 app.state.limiter = limiter
 
 
 @app.exception_handler(RateLimitExceeded)
 async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
-    return JSONResponse(status_code=429, content={"status": "error", "message": "Хэт олон хүсэлт. Түр хүлээнэ үү."})
+    return JSONResponse(
+        status_code=429,
+        content={"status": "error", "message": "Хэт олон хүсэлт. Түр хүлээнэ үү."},
+    )
 
 
-# Middleware
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(
     CORSMiddleware,
@@ -182,10 +215,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Mount static files
 app.mount("/static", StaticFiles(directory=ALERTS_DIR), name="static")
 
-# API v1 router
 app.include_router(api_router)
 
 
@@ -204,22 +235,9 @@ async def health_check():
     }
 
 
-# Legacy /token endpoint (frontend currently uses this)
-from fastapi.security import OAuth2PasswordRequestForm
-from fastapi import Depends, HTTPException, status, Response
-from app.core.security import verify_password, create_access_token, set_auth_cookie
-
-
 @app.post("/token")
 @limiter.limit("10/minute")
-async def legacy_login(
-    request: Request,
-    response: Response,
-    form_data: OAuth2PasswordRequestForm = Depends(),
-):
-    from app.db.session import AsyncSessionLocal
-    from app.db.repository.users import UserRepository
-
+async def legacy_login(request: Request, response: Response, form_data: LoginForm):
     async with AsyncSessionLocal() as db:
         repo = UserRepository(db)
         user = await repo.get_by_identifier(form_data.username)
@@ -247,12 +265,9 @@ async def legacy_login(
     }
 
 
-# Legacy endpoints that frontend uses
 @app.get("/users/me")
 async def legacy_users_me(request: Request):
     from app.core.security import get_current_user
-    from app.db.session import AsyncSessionLocal
-    from app.db.repository.users import UserRepository
 
     user = await get_current_user(request)
     async with AsyncSessionLocal() as db:
@@ -274,8 +289,6 @@ async def legacy_users_me(request: Request):
 @app.get("/alerts")
 async def legacy_alerts(request: Request):
     from app.core.security import get_current_user
-    from app.db.session import AsyncSessionLocal
-    from app.db.repository.alerts import AlertRepository
 
     user = await get_current_user(request)
     async with AsyncSessionLocal() as db:
@@ -293,18 +306,19 @@ async def legacy_alerts(request: Request):
             alert["web_url"] = None
             alert["video_url"] = None
             continue
+        if image_path.startswith(("http://", "https://")):
+            alert["web_url"] = image_path
+            alert["video_url"] = None
+            continue
         file_name = os.path.basename(image_path)
-        video_name = file_name.replace('.jpg', '.mp4')
+        video_name = file_name.replace(".jpg", ".mp4")
         video_full_path = os.path.join(ALERTS_DIR, video_name)
-        alert['web_url'] = f"{base_url}/static/{file_name}"
-        alert['video_url'] = f"{base_url}/static/{video_name}" if os.path.exists(video_full_path) else None
+        alert["web_url"] = f"{base_url}/static/{file_name}"
+        alert["video_url"] = (
+            f"{base_url}/static/{video_name}" if os.path.exists(video_full_path) else None
+        )
 
     return {"status": "success", "data": alerts}
-
-
-# Legacy video feeds (unauthenticated for backward compat, will be removed in v2)
-import asyncio
-import cv2
 
 
 async def _legacy_gen_frames(camera_type: str):
@@ -321,34 +335,25 @@ async def _legacy_gen_frames(camera_type: str):
         await asyncio.sleep(0.033)
 
 
-from fastapi.responses import StreamingResponse
-
-
 @app.get("/video_feed")
 async def legacy_video_feed():
-    return StreamingResponse(_legacy_gen_frames("mac"), media_type="multipart/x-mixed-replace; boundary=frame")
+    return StreamingResponse(
+        _legacy_gen_frames("mac"), media_type="multipart/x-mixed-replace; boundary=frame"
+    )
 
 
 @app.get("/video_feed/{camera_id}")
 async def legacy_video_feed_by_id(camera_id: str):
     if camera_id not in ("mac", "phone", "axis"):
         raise HTTPException(status_code=404, detail="Камер олдсонгүй")
-    return StreamingResponse(_legacy_gen_frames(camera_id), media_type="multipart/x-mixed-replace; boundary=frame")
-
-
-# Legacy auth router endpoints
-from app.schemas.auth import UserCreate as UserCreateSchema
-from app.schemas.auth import ForgotPasswordRequest, VerifyCodeRequest, ResetPasswordRequest
-from app.schemas.user import ContactForm
-from app.services.email_service import send_contact_email
+    return StreamingResponse(
+        _legacy_gen_frames(camera_id),
+        media_type="multipart/x-mixed-replace; boundary=frame",
+    )
 
 
 @app.post("/register")
 async def legacy_register(user_data: UserCreateSchema):
-    from app.core.security import get_password_hash
-    from app.db.session import AsyncSessionLocal
-    from app.db.repository.users import UserRepository
-
     async with AsyncSessionLocal() as db:
         repo = UserRepository(db)
         existing = await repo.get_by_identifier(user_data.username)
@@ -359,8 +364,10 @@ async def legacy_register(user_data: UserCreateSchema):
             raise HTTPException(status_code=400, detail="Имэйл бүртгэлтэй байна")
         hashed_pwd = get_password_hash(user_data.password)
         user_id = await repo.create(
-            username=user_data.username, email=user_data.email,
-            phone_number=user_data.phone_number, hashed_password=hashed_pwd,
+            username=user_data.username,
+            email=user_data.email,
+            phone_number=user_data.phone_number,
+            hashed_password=hashed_pwd,
             full_name=user_data.full_name,
         )
     return {"message": "Хэрэглэгч амжилттай бүртгэгдлээ", "user_id": user_id}
@@ -369,58 +376,50 @@ async def legacy_register(user_data: UserCreateSchema):
 @app.post("/api/contact")
 async def legacy_contact(form: ContactForm):
     try:
-        await send_contact_email(name=form.name, email=form.email, subject=form.subject, message=form.message)
+        await send_contact_email(
+            name=form.name,
+            email=form.email,
+            subject=form.subject,
+            message=form.message,
+        )
         return {"status": "success", "message": "Email sent successfully"}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 # Legacy admin endpoints - forward to v1
-from app.api.v1.admin import (
-    get_organizations, create_organization, delete_organization,
-    get_users, update_user_role, update_user_org, delete_user, get_stats,
-)
-
 app.add_api_route("/admin/organizations", get_organizations, methods=["GET"])
 app.add_api_route("/admin/organizations", create_organization, methods=["POST"])
-app.add_api_route("/admin/organizations/{org_id}", delete_organization, methods=["DELETE"])
+app.add_api_route(
+    "/admin/organizations/{org_id}", delete_organization, methods=["DELETE"]
+)
 app.add_api_route("/admin/users", get_users, methods=["GET"])
 app.add_api_route("/admin/users/{user_id}/role", update_user_role, methods=["PUT"])
-app.add_api_route("/admin/users/{user_id}/organization", update_user_org, methods=["PUT"])
+app.add_api_route(
+    "/admin/users/{user_id}/organization", update_user_org, methods=["PUT"]
+)
 app.add_api_route("/admin/users/{user_id}", delete_user, methods=["DELETE"])
 app.add_api_route("/admin/stats", get_stats, methods=["GET"])
-
-# Legacy alert admin endpoints
-from app.api.v1.alerts import get_admin_alerts, mark_reviewed, delete_alert
 
 app.add_api_route("/admin/alerts", get_admin_alerts, methods=["GET"])
 app.add_api_route("/admin/alerts/{alert_id}/reviewed", mark_reviewed, methods=["PUT"])
 app.add_api_route("/admin/alerts/{alert_id}", delete_alert, methods=["DELETE"])
-
-# Legacy camera admin endpoints
-from app.api.v1.cameras import list_cameras, create_camera, update_camera, delete_camera
 
 app.add_api_route("/admin/cameras", list_cameras, methods=["GET"])
 app.add_api_route("/admin/cameras", create_camera, methods=["POST"])
 app.add_api_route("/admin/cameras/{camera_id}", update_camera, methods=["PUT"])
 app.add_api_route("/admin/cameras/{camera_id}", delete_camera, methods=["DELETE"])
 
-# Legacy password endpoints
+
 @app.post("/forgot-password")
 async def legacy_forgot_password(request: Request, data: ForgotPasswordRequest):
-    from app.db.session import AsyncSessionLocal
-    from app.db.repository.users import UserRepository
-    from app.services.email_service import send_otp_email
-    import random, string
-    from datetime import datetime, timedelta, timezone
-
     async with AsyncSessionLocal() as db:
         repo = UserRepository(db)
         user = await repo.get_by_email(data.email)
         if not user:
             return {"message": "Хэрэв имэйл бүртгэлтэй бол сэргээх код илгээгдлээ"}
-        otp_code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=8))
-        expiry = datetime.now(timezone.utc) + timedelta(minutes=15)
+        otp_code = "".join(random.choices(string.ascii_uppercase + string.digits, k=8))
+        expiry = datetime.now(UTC) + timedelta(minutes=15)
         await repo.update_recovery_data(user["id"], otp_code, expiry)
         await send_otp_email(data.email, otp_code)
     return {"message": "Сэргээх код имэйл рүү илгээгдлээ"}
@@ -428,10 +427,6 @@ async def legacy_forgot_password(request: Request, data: ForgotPasswordRequest):
 
 @app.post("/verify-code")
 async def legacy_verify_code(request: Request, data: VerifyCodeRequest):
-    from app.db.session import AsyncSessionLocal
-    from app.db.repository.users import UserRepository
-    from datetime import datetime, timezone
-
     async with AsyncSessionLocal() as db:
         repo = UserRepository(db)
         user = await repo.get_by_email(data.email)
@@ -440,18 +435,13 @@ async def legacy_verify_code(request: Request, data: VerifyCodeRequest):
         if user.get("recovery_code") != data.code:
             raise HTTPException(status_code=400, detail="Код буруу эсвэл хугацаа дууссан")
         expiry = user.get("recovery_code_expires")
-        if not expiry or expiry < datetime.now(timezone.utc):
+        if not expiry or expiry < datetime.now(UTC):
             raise HTTPException(status_code=400, detail="Код буруу эсвэл хугацаа дууссан")
     return {"message": "Код баталгаажлаа"}
 
 
 @app.post("/reset-password")
 async def legacy_reset_password(request: Request, data: ResetPasswordRequest):
-    from app.core.security import validate_password_strength, get_password_hash
-    from app.db.session import AsyncSessionLocal
-    from app.db.repository.users import UserRepository
-    from datetime import datetime, timezone
-
     async with AsyncSessionLocal() as db:
         repo = UserRepository(db)
         user = await repo.get_by_email(data.email)
@@ -460,7 +450,7 @@ async def legacy_reset_password(request: Request, data: ResetPasswordRequest):
         if user.get("recovery_code") != data.code:
             raise HTTPException(status_code=400, detail="Код буруу эсвэл хугацаа дууссан")
         expiry = user.get("recovery_code_expires")
-        if not expiry or expiry < datetime.now(timezone.utc):
+        if not expiry or expiry < datetime.now(UTC):
             raise HTTPException(status_code=400, detail="Код буруу эсвэл хугацаа дууссан")
         validate_password_strength(data.new_password)
         hashed_pwd = get_password_hash(data.new_password)

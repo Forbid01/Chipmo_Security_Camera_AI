@@ -1,6 +1,6 @@
-from pydantic import BaseModel
-from typing import Optional, List
 from datetime import datetime
+
+from pydantic import BaseModel
 
 
 class CameraCreate(BaseModel):
@@ -9,16 +9,16 @@ class CameraCreate(BaseModel):
     camera_type: str  # rtsp, mjpeg, usb, axis
     store_id: int
     is_ai_enabled: bool = True
-    organization_id: Optional[int] = None
+    organization_id: int | None = None
 
 
 class CameraUpdate(BaseModel):
-    name: Optional[str] = None
-    url: Optional[str] = None
-    camera_type: Optional[str] = None
-    store_id: Optional[int] = None
-    is_active: Optional[bool] = None
-    is_ai_enabled: Optional[bool] = None
+    name: str | None = None
+    url: str | None = None
+    camera_type: str | None = None
+    store_id: int | None = None
+    is_active: bool | None = None
+    is_ai_enabled: bool | None = None
 
 
 class CameraResponse(BaseModel):
@@ -27,9 +27,9 @@ class CameraResponse(BaseModel):
     url: str
     camera_type: str
     store_id: int
-    store_name: Optional[str] = None
-    organization_id: Optional[int] = None
-    organization_name: Optional[str] = None
+    store_name: str | None = None
+    organization_id: int | None = None
+    organization_name: str | None = None
     is_active: bool
     is_ai_enabled: bool
     created_at: datetime
@@ -38,7 +38,7 @@ class CameraResponse(BaseModel):
 
 
 class CameraList(BaseModel):
-    items: List[CameraResponse]
+    items: list[CameraResponse]
     total: int
 
 
@@ -46,5 +46,5 @@ class CameraStatus(BaseModel):
     camera_id: int
     name: str
     is_connected: bool
-    fps: Optional[float] = None
-    last_frame_at: Optional[datetime] = None
+    fps: float | None = None
+    last_frame_at: datetime | None = None

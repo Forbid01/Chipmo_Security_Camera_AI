@@ -1,23 +1,23 @@
 # app/services/ai_service.py
 
+import logging
+import math
 import os
+import queue
+import subprocess
+import time
+from concurrent.futures import ThreadPoolExecutor
+
 import cv2
 import torch
-import queue
-import time
-import logging
-import numpy as np
-import math
-import subprocess
-from concurrent.futures import ThreadPoolExecutor
 from ultralytics import YOLO
 
 logger = logging.getLogger(__name__)
 
 try:
     from app.core.config import ALERTS_DIR
-    from app.services.camera_manager import camera_manager
     from app.services.auto_learner import auto_learner
+    from app.services.camera_manager import camera_manager
 except ImportError:
     logger.error("app.core модулиуд олдохгүй байна.")
 
@@ -76,20 +76,25 @@ class ShopliftDetector:
                           bbox: list, camera_id: int = None, store_id: int = None,
                           score: float = None):
         try:
+            from app.services.storage import get_storage
+
             current_time = int(time.time())
-            base_filename = f"alert_{yolo_id}_{current_time}"
-            img_path   = os.path.join(ALERTS_DIR, f"{base_filename}.jpg")
-            video_path = os.path.join(ALERTS_DIR, f"{base_filename}.mp4")
+            filename = f"alert_{yolo_id}_{current_time}.jpg"
 
-            cv2.imwrite(img_path, frame_to_save)
+            try:
+                image_url = get_storage().save_image(frame_to_save, filename=filename)
+            except Exception as exc:
+                logger.error(f"Storage upload failed: {exc} — falling back to local")
+                fallback = os.path.join(ALERTS_DIR, filename)
+                cv2.imwrite(fallback, frame_to_save)
+                image_url = fallback
 
-            # Save alert to DB (async via new session)
             import asyncio
             loop = asyncio.new_event_loop()
             try:
                 loop.run_until_complete(
                     self._save_alert_to_db(
-                        person_id=int(yolo_id), image_path=img_path,
+                        person_id=int(yolo_id), image_path=image_url,
                         reason=reason, camera_id=camera_id, store_id=store_id,
                         score=score,
                     )
@@ -97,25 +102,22 @@ class ShopliftDetector:
             finally:
                 loop.close()
 
-            # Telegram мэдэгдэл илгээх
-            import asyncio
             try:
                 tg_loop = asyncio.new_event_loop()
                 tg_loop.run_until_complete(
                     self._send_telegram_alert(
                         store_id=store_id, camera_id=camera_id,
-                        reason=reason, image_path=img_path, score=score,
+                        reason=reason, image_path=image_url, score=score,
                     )
                 )
                 tg_loop.close()
             except Exception as tg_err:
                 logger.error(f"Telegram notification error: {tg_err}")
 
-            # Queue for frontend
             from app.core.state import alert_queue
             alert_queue.put({
                 "id": yolo_id,
-                "img": img_path, "reason": reason, "name": name,
+                "img": image_url, "reason": reason, "name": name,
                 "frame": frame_to_save, "bbox": bbox,
                 "camera_id": camera_id, "store_id": store_id,
             })
@@ -128,8 +130,8 @@ class ShopliftDetector:
         if not telegram_notifier.is_configured:
             return
 
-        from app.db.session import AsyncSessionLocal
         from app.db.repository.stores import StoreRepository
+        from app.db.session import AsyncSessionLocal
 
         async with AsyncSessionLocal() as db:
             store_repo = StoreRepository(db)
@@ -155,8 +157,8 @@ class ShopliftDetector:
 
     async def _save_alert_to_db(self, person_id, image_path, reason,
                                  camera_id=None, store_id=None, score=None):
-        from app.db.session import AsyncSessionLocal
         from app.db.repository.alerts import AlertRepository
+        from app.db.session import AsyncSessionLocal
 
         async with AsyncSessionLocal() as db:
             repo = AlertRepository(db)
@@ -186,24 +188,18 @@ class ShopliftDetector:
         if len(kps) < 17:
             return score_delta, reasons
 
-        nose       = kps[0]
         l_eye      = kps[1]
         r_eye      = kps[2]
         l_shoulder = kps[5]
         r_shoulder = kps[6]
-        l_elbow    = kps[7]
-        r_elbow    = kps[8]
         l_wrist    = kps[9]
         r_wrist    = kps[10]
         l_hip      = kps[11]
         r_hip      = kps[12]
-        l_knee     = kps[13]
-        r_knee     = kps[14]
 
         shoulder_cx = None
         if self._keypoint_valid(l_shoulder) and self._keypoint_valid(r_shoulder):
             shoulder_cx = (l_shoulder[0] + r_shoulder[0]) / 2
-            shoulder_cy = (l_shoulder[1] + r_shoulder[1]) / 2
 
         face_cx = None
         if self._keypoint_valid(l_eye) and self._keypoint_valid(r_eye):
@@ -286,29 +282,27 @@ class ShopliftDetector:
 
     def run_inference(self):
         ai_queue = camera_manager.ai_input_queue
-        frame_counters = {}
 
         while True:
             try:
                 data = ai_queue.get(timeout=2)
                 frame = data["frame"]
-                source_name = data.get("source", "Unknown")
+                full_frame = data.get("full_frame", frame)
                 camera_id = data.get("camera_id")
                 store_id = data.get("store_id", 0)
                 threshold = data.get("threshold", 80.0)
-                cooldown = data.get("cooldown", 15)
+                cooldown = data.get("cooldown", 60)
             except (queue.Empty, TypeError, KeyError):
                 continue
 
-            frame_counters[source_name] = frame_counters.get(source_name, 0) + 1
-            frame_idx = frame_counters[source_name]
-
-            if frame_idx % 2 != 0:
-                continue
-
-            display_frame = frame.copy()
+            display_frame = full_frame.copy()
             current_time  = time.time()
             self.frame_count += 1
+
+            sh, sw = frame.shape[:2]
+            dh, dw = display_frame.shape[:2]
+            scale_x = dw / sw if sw else 1.0
+            scale_y = dh / sh if sh else 1.0
 
             # Get per-store weights and threshold (auto-learned)
             weights = self._get_weights(store_id)
@@ -342,8 +336,12 @@ class ShopliftDetector:
                 boxes     = pose_results[0].boxes.xyxy.cpu().numpy()
 
                 for i, yolo_id in enumerate(yolo_ids):
-                    x1, y1, x2, y2 = map(int, boxes[i])
-                    person_h = max(1, y2 - y1)
+                    bx1, by1, bx2, by2 = boxes[i]
+                    person_h = max(1, int(by2 - by1))
+                    x1 = int(bx1 * scale_x)
+                    y1 = int(by1 * scale_y)
+                    x2 = int(bx2 * scale_x)
+                    y2 = int(by2 * scale_y)
 
                     if yolo_id not in self.tracker_history:
                         self.tracker_history[yolo_id] = {

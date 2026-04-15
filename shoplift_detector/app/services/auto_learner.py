@@ -8,11 +8,10 @@
 5. AI service шинэ тохиргоог автоматаар ашиглана
 """
 
+import asyncio
 import json
 import logging
-import asyncio
-from typing import Dict, Optional, Tuple
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +30,7 @@ class AutoLearner:
     """Feedback-ээс суралцаж, threshold болон score weights-г тохируулна."""
 
     def __init__(self):
-        self._store_configs: Dict[int, dict] = {}
+        self._store_configs: dict[int, dict] = {}
         self._learning_lock = asyncio.Lock()
 
     def get_store_config(self, store_id: int) -> dict:
@@ -41,7 +40,7 @@ class AutoLearner:
             "weights": DEFAULT_WEIGHTS.copy(),
         })
 
-    async def learn_from_feedback(self, db_session) -> Dict[int, dict]:
+    async def learn_from_feedback(self, db_session) -> dict[int, dict]:
         """Бүх дэлгүүрийн feedback-ээс суралцах."""
         async with self._learning_lock:
             from app.db.repository.feedback_repo import FeedbackRepository
@@ -65,7 +64,7 @@ class AutoLearner:
 
             return updated
 
-    async def _learn_for_store(self, db_session, repo, store_id: int) -> Optional[dict]:
+    async def _learn_for_store(self, db_session, repo, store_id: int) -> dict | None:
         """Нэг дэлгүүрийн feedback-ээс суралцах."""
         feedback_data = await repo.get_feedback_for_learning(store_id=store_id)
 
@@ -210,7 +209,7 @@ class AutoLearner:
         )
 
         # Save new version
-        version = datetime.now(timezone.utc).strftime("v%Y%m%d_%H%M%S")
+        version = datetime.now(UTC).strftime("v%Y%m%d_%H%M%S")
         await db_session.execute(
             text("""
                 INSERT INTO model_versions (store_id, version, model_type,

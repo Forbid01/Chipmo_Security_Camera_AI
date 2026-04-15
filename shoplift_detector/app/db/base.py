@@ -1,8 +1,8 @@
-import os
 import logging
-import psycopg2
-from psycopg2 import pool
+import os
+
 from dotenv import load_dotenv
+from psycopg2 import pool
 
 load_dotenv()
 logger = logging.getLogger(__name__)

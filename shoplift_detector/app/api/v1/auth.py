@@ -1,32 +1,42 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Request, Response
-from fastapi.security import OAuth2PasswordRequestForm
-from sqlalchemy.ext.asyncio import AsyncSession
-from slowapi import Limiter
-from slowapi.util import get_remote_address
+import random
+import string
+from datetime import UTC, datetime, timedelta
+from typing import Annotated
 
 from app.core.security import (
-    verify_password, get_password_hash, create_access_token,
-    validate_password_strength, get_current_user, set_auth_cookie, clear_auth_cookie,
+    CurrentUser,
+    clear_auth_cookie,
+    create_access_token,
+    get_password_hash,
+    set_auth_cookie,
+    validate_password_strength,
+    verify_password,
 )
-from app.db.session import get_db
 from app.db.repository.users import UserRepository
+from app.db.session import DB
 from app.schemas.auth import (
-    UserCreate, TokenResponse, UserBrief,
-    ForgotPasswordRequest, VerifyCodeRequest, ResetPasswordRequest,
+    ForgotPasswordRequest,
+    ResetPasswordRequest,
+    TokenResponse,
+    UserBrief,
+    UserCreate,
+    VerifyCodeRequest,
 )
 from app.schemas.common import APIResponse
 from app.services.email_service import send_otp_email
-
-import random
-import string
-from datetime import datetime, timedelta, timezone
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi.security import OAuth2PasswordRequestForm
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 
 router = APIRouter()
 limiter = Limiter(key_func=get_remote_address)
 
+LoginForm = Annotated[OAuth2PasswordRequestForm, Depends()]
+
 
 @router.post("/register", response_model=APIResponse)
-async def register(user_data: UserCreate, db: AsyncSession = Depends(get_db)):
+async def register(user_data: UserCreate, db: DB):
     repo = UserRepository(db)
     existing = await repo.get_by_identifier(user_data.username)
     if existing:
@@ -52,8 +62,8 @@ async def register(user_data: UserCreate, db: AsyncSession = Depends(get_db)):
 async def login(
     request: Request,
     response: Response,
-    form_data: OAuth2PasswordRequestForm = Depends(),
-    db: AsyncSession = Depends(get_db),
+    form_data: LoginForm,
+    db: DB,
 ):
     repo = UserRepository(db)
     user = await repo.get_by_identifier(form_data.username)
@@ -73,7 +83,6 @@ async def login(
     }
     access_token = create_access_token(data=token_data)
 
-    # Set httpOnly cookie
     set_auth_cookie(response, access_token)
 
     return TokenResponse(
@@ -95,10 +104,7 @@ async def logout(response: Response):
 
 
 @router.get("/me")
-async def get_me(
-    current_user: dict = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
+async def get_me(current_user: CurrentUser, db: DB):
     repo = UserRepository(db)
     user = await repo.get_by_identifier(current_user["username"])
     if not user:
@@ -115,19 +121,15 @@ async def get_me(
 
 @router.post("/forgot-password", response_model=APIResponse)
 @limiter.limit("5/minute")
-async def forgot_password(
-    request: Request,
-    data: ForgotPasswordRequest,
-    db: AsyncSession = Depends(get_db),
-):
+async def forgot_password(request: Request, data: ForgotPasswordRequest, db: DB):
     repo = UserRepository(db)
     user = await repo.get_by_email(data.email)
     if not user:
         # Don't reveal if email exists
         return APIResponse(message="Хэрэв имэйл бүртгэлтэй бол сэргээх код илгээгдлээ")
 
-    otp_code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=8))
-    expiry = datetime.now(timezone.utc) + timedelta(minutes=15)
+    otp_code = "".join(random.choices(string.ascii_uppercase + string.digits, k=8))
+    expiry = datetime.now(UTC) + timedelta(minutes=15)
     await repo.update_recovery_data(user["id"], otp_code, expiry)
     await send_otp_email(data.email, otp_code)
     return APIResponse(message="Сэргээх код имэйл рүү илгээгдлээ")
@@ -135,7 +137,7 @@ async def forgot_password(
 
 @router.post("/verify-code", response_model=APIResponse)
 @limiter.limit("5/minute")
-async def verify_code(request: Request, data: VerifyCodeRequest, db: AsyncSession = Depends(get_db)):
+async def verify_code(request: Request, data: VerifyCodeRequest, db: DB):
     repo = UserRepository(db)
     user = await repo.get_by_email(data.email)
     if not user:
@@ -143,7 +145,7 @@ async def verify_code(request: Request, data: VerifyCodeRequest, db: AsyncSessio
 
     db_code = user.get("recovery_code")
     db_expiry = user.get("recovery_code_expires")
-    if db_code != data.code or not db_expiry or db_expiry < datetime.now(timezone.utc):
+    if db_code != data.code or not db_expiry or db_expiry < datetime.now(UTC):
         raise HTTPException(status_code=400, detail="Код буруу эсвэл хугацаа дууссан")
 
     return APIResponse(message="Код баталгаажлаа")
@@ -151,7 +153,7 @@ async def verify_code(request: Request, data: VerifyCodeRequest, db: AsyncSessio
 
 @router.post("/reset-password", response_model=APIResponse)
 @limiter.limit("5/minute")
-async def reset_password(request: Request, data: ResetPasswordRequest, db: AsyncSession = Depends(get_db)):
+async def reset_password(request: Request, data: ResetPasswordRequest, db: DB):
     repo = UserRepository(db)
     user = await repo.get_by_email(data.email)
     if not user:
@@ -159,7 +161,7 @@ async def reset_password(request: Request, data: ResetPasswordRequest, db: Async
 
     db_code = user.get("recovery_code")
     db_expiry = user.get("recovery_code_expires")
-    if db_code != data.code or not db_expiry or db_expiry < datetime.now(timezone.utc):
+    if db_code != data.code or not db_expiry or db_expiry < datetime.now(UTC):
         raise HTTPException(status_code=400, detail="Код буруу эсвэл хугацаа дууссан")
 
     validate_password_strength(data.new_password)

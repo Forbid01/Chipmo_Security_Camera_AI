@@ -5,17 +5,17 @@ alert илэрмэгц зураг + мэдэгдэл илгээнэ.
 """
 
 import logging
+
 import httpx
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
 
 class TelegramNotifier:
     def __init__(self):
-        self._bot_token: Optional[str] = None
+        self._bot_token: str | None = None
 
-    def configure(self, bot_token: Optional[str]):
+    def configure(self, bot_token: str | None):
         self._bot_token = bot_token
         if bot_token:
             logger.info("Telegram notifier configured.")
@@ -32,8 +32,8 @@ class TelegramNotifier:
         store_name: str,
         camera_name: str,
         reason: str,
-        image_path: Optional[str] = None,
-        score: Optional[float] = None,
+        image_path: str | None = None,
+        score: float | None = None,
     ):
         """Alert-ийг Telegram руу илгээх."""
         if not self._bot_token or not chat_id:
@@ -52,7 +52,17 @@ class TelegramNotifier:
 
         try:
             async with httpx.AsyncClient(timeout=10) as client:
-                if image_path:
+                if image_path and isinstance(image_path, str) and image_path.startswith(("http://", "https://")):
+                    resp = await client.post(
+                        f"{url}/sendPhoto",
+                        data={
+                            "chat_id": chat_id,
+                            "caption": text,
+                            "parse_mode": "HTML",
+                            "photo": image_path,
+                        },
+                    )
+                elif image_path:
                     with open(image_path, "rb") as photo:
                         resp = await client.post(
                             f"{url}/sendPhoto",

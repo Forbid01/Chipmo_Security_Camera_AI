@@ -1,6 +1,9 @@
 import logging
-from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
+from typing import Annotated
+
 from app.core.config import settings
+from fastapi import Depends
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 logger = logging.getLogger(__name__)
 
@@ -40,3 +43,6 @@ async def get_db() -> AsyncSession:
             yield session
         finally:
             await session.close()
+
+
+DB = Annotated[AsyncSession, Depends(get_db)]

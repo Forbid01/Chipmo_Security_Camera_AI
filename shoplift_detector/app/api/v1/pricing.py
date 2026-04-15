@@ -1,10 +1,10 @@
 """Public pricing quote endpoint."""
 
-from fastapi import APIRouter, Query
 from typing import Literal
 
-from app.services.pricing_service import calculate_quote
 from app.schemas.pricing import QuoteResponse
+from app.services.pricing_service import calculate_quote
+from fastapi import APIRouter, Query
 
 router = APIRouter()
 

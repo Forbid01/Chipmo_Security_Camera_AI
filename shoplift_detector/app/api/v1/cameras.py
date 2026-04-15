@@ -1,21 +1,19 @@
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from app.core.security import require_super_admin, require_admin_or_above
-from app.db.session import get_db
+from app.core.security import AdminOrAbove, SuperAdmin
 from app.db.repository.camera_repo import CameraRepository
+from app.db.session import DB
 from app.schemas.camera import CameraCreate, CameraUpdate
 from app.schemas.common import APIResponse
+from fastapi import APIRouter, HTTPException
 
 router = APIRouter()
 
 
 @router.get("")
 async def list_cameras(
-    store_id: int = None,
-    organization_id: int = None,
-    admin: dict = Depends(require_admin_or_above),
-    db: AsyncSession = Depends(get_db),
+    admin: AdminOrAbove,
+    db: DB,
+    store_id: int | None = None,
+    organization_id: int | None = None,
 ):
     repo = CameraRepository(db)
     if store_id:
@@ -28,11 +26,7 @@ async def list_cameras(
 
 
 @router.post("", response_model=APIResponse)
-async def create_camera(
-    data: CameraCreate,
-    admin: dict = Depends(require_super_admin),
-    db: AsyncSession = Depends(get_db),
-):
+async def create_camera(data: CameraCreate, admin: SuperAdmin, db: DB):
     repo = CameraRepository(db)
     cam_id = await repo.create(data)
 
@@ -51,12 +45,7 @@ async def create_camera(
 
 
 @router.put("/{camera_id}", response_model=APIResponse)
-async def update_camera(
-    camera_id: int,
-    data: CameraUpdate,
-    admin: dict = Depends(require_super_admin),
-    db: AsyncSession = Depends(get_db),
-):
+async def update_camera(camera_id: int, data: CameraUpdate, admin: SuperAdmin, db: DB):
     repo = CameraRepository(db)
     success = await repo.update(camera_id, data)
     if not success:
@@ -84,12 +73,7 @@ async def update_camera(
 
 
 @router.delete("/{camera_id}", response_model=APIResponse)
-async def delete_camera(
-    camera_id: int,
-    admin: dict = Depends(require_super_admin),
-    db: AsyncSession = Depends(get_db),
-):
-    # Unregister from camera manager first
+async def delete_camera(camera_id: int, admin: SuperAdmin, db: DB):
     from app.services.camera_manager import camera_manager
     camera_manager.unregister_camera(camera_id)
 
@@ -101,8 +85,6 @@ async def delete_camera(
 
 
 @router.get("/status")
-async def camera_status(
-    admin: dict = Depends(require_admin_or_above),
-):
+async def camera_status(admin: AdminOrAbove):
     from app.services.camera_manager import camera_manager
     return camera_manager.get_all_status()
