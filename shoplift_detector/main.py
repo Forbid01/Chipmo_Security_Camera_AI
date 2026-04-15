@@ -42,6 +42,7 @@ from app.api.v1.cameras import (  # noqa: E402
 from app.core.config import ALERTS_DIR, settings  # noqa: E402
 from app.core.logging import get_logger, setup_logging  # noqa: E402
 from app.core.security import (  # noqa: E402
+    CurrentUser,
     create_access_token,
     get_password_hash,
     set_auth_cookie,
@@ -306,10 +307,8 @@ async def legacy_login(request: Request, response: Response, form_data: LoginFor
 
 
 @app.get("/users/me")
-async def legacy_users_me(request: Request):
-    from app.core.security import get_current_user
-
-    user = await get_current_user(request)
+async def legacy_users_me(current_user: CurrentUser):
+    user = current_user
     async with AsyncSessionLocal() as db:
         repo = UserRepository(db)
         full_user = await repo.get_by_identifier(user["username"])
@@ -327,10 +326,8 @@ async def legacy_users_me(request: Request):
 
 
 @app.get("/alerts")
-async def legacy_alerts(request: Request):
-    from app.core.security import get_current_user
-
-    user = await get_current_user(request)
+async def legacy_alerts(request: Request, current_user: CurrentUser):
+    user = current_user
     async with AsyncSessionLocal() as db:
         repo = AlertRepository(db)
         org_id = user.get("org_id")

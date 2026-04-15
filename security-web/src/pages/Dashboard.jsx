@@ -18,7 +18,7 @@ import { getVideoFeedUrlV2, getUserProfile, getMyStores, getMyCameras, getCamera
 
 function Dashboard() {
   const navigate = useNavigate();
-  const { alerts, chartData } = useAlerts(3000);
+  const { alerts, chartData } = useAlerts(10000);
   const [activeVideo, setActiveVideo] = useState(null);
   const [selectedDay, setSelectedDay] = useState(null);
   const [selectedHour, setSelectedHour] = useState(null);
@@ -221,17 +221,10 @@ function Dashboard() {
       >
         <div className="absolute inset-0 bg-red-600/5 blur-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
         <div className="relative">
-          <div className="relative p-2.5 bg-gradient-to-br from-slate-900 to-black rounded-xl border border-red-500/30 group-hover:border-red-500/60 transition-all duration-500 shadow-2xl overflow-hidden">
-            <ShieldCheck className="text-red-500 group-hover:rotate-[15deg] transition-transform duration-500 relative z-10" size={24} />
-            <motion.div
-              animate={{ y: [-20, 40] }}
-              transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
-              className="absolute left-0 w-full h-[1px] bg-red-400/40 shadow-[0_0_8px_red] z-0"
-            />
+          <div className="relative p-2.5 bg-gradient-to-br from-slate-900 to-black rounded-xl border border-red-500/30 group-hover:border-red-500/60 transition-colors shadow-2xl overflow-hidden">
+            <ShieldCheck className="text-red-500 relative z-10" size={24} />
           </div>
-          <div className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-600 rounded-full border-2 border-[#05080d] z-20">
-            <div className="absolute inset-0 bg-red-500 rounded-full animate-ping" />
-          </div>
+          <div className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-600 rounded-full border-2 border-[#05080d] z-20" />
         </div>
         <div className="flex flex-col justify-center leading-none z-10">
           <h1 className="text-xl font-black tracking-tighter text-white uppercase flex items-center">
@@ -372,7 +365,7 @@ function Dashboard() {
       {/* SIDEBAR — hidden on mobile, slide-in when open */}
       <aside className={`
     fixed lg:relative inset-y-0 left-0 z-[70]
-    w-72 bg-[#0f172a]/95 lg:bg-[#0f172a]/40 backdrop-blur-3xl border-r border-slate-800/50
+    w-72 bg-[#0f172a] lg:bg-[#0f172a]/90 border-r border-slate-800/50
     flex flex-col
     transform transition-transform duration-300 ease-in-out
     ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
@@ -504,7 +497,7 @@ function Dashboard() {
               </div>
 
               {/* LIVE FEED */}
-              <div className="bg-[#0f172a]/60 backdrop-blur-xl rounded-2xl lg:rounded-[3rem] border border-slate-800/50 overflow-hidden shadow-2xl relative ring-1 ring-white/5 bg-black">
+              <div className="bg-black rounded-2xl lg:rounded-[3rem] border border-slate-800/50 overflow-hidden shadow-2xl relative ring-1 ring-white/5">
                 <div className="p-3 lg:p-5 bg-slate-900/40 border-b border-slate-800/50 flex justify-between items-center font-mono">
                   <span className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-blue-400">
                     <Activity size={14} className="animate-pulse" /> {storeCameras.find(c => c.id === activeCamera)?.name || 'Камер'}
@@ -542,7 +535,7 @@ function Dashboard() {
 
             {/* Right: Logs */}
             <div className="lg:col-span-4">
-              <div className="bg-[#0f172a]/60 backdrop-blur-xl rounded-2xl lg:rounded-[2.5rem] border border-slate-800/50 flex flex-col h-[500px] lg:h-[calc(100vh-140px)] shadow-2xl overflow-hidden ring-1 ring-white/5">
+              <div className="bg-[#0f172a]/90 rounded-2xl lg:rounded-[2.5rem] border border-slate-800/50 flex flex-col h-[500px] lg:h-[calc(100vh-140px)] shadow-2xl overflow-hidden ring-1 ring-white/5">
                 <div className="p-5 lg:p-8 border-b border-slate-800 bg-slate-900/40 flex justify-between items-center">
                   <div className="flex items-center gap-3">
                     <List size={20} className="text-amber-500" />

@@ -2,7 +2,7 @@ import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'rec
 import { Clock } from 'lucide-react';
 
 export const HourlyChart = ({ data, selectedHour, onHourClick, onClearHour }) => (
-  <div className="bg-[#0f172a]/60 backdrop-blur-xl p-6 rounded-[2.5rem] border border-slate-800/50 shadow-xl relative">
+  <div className="bg-[#0f172a]/90 p-6 rounded-[2.5rem] border border-slate-800/50 shadow-xl relative">
     <div className="flex justify-between items-center mb-6">
       <h2 className="flex items-center gap-2 font-semibold text-slate-400 uppercase text-[10px] tracking-widest font-mono">
         <Clock size={16} className="text-blue-500" /> Цагийн идэвхжил
