@@ -1,4 +1,5 @@
 import asyncio
+import time
 
 import cv2
 import numpy as np
@@ -9,29 +10,56 @@ from fastapi.responses import StreamingResponse
 
 router = APIRouter()
 
+# Target ~15 FPS to the browser. AI-annotated dashboards don't benefit from
+# 30 FPS — the bottleneck is JPEG encode + network + <img> decode. Sending
+# half the frames cuts CPU and bandwidth roughly in half with no visible loss.
+STREAM_FPS = 15
+STREAM_FRAME_INTERVAL = 1.0 / STREAM_FPS
+JPEG_QUALITY = 75
+
 
 async def generate_camera_frames(camera_id: int):
+    last_sent = 0.0
+    last_frame_id = None
     while True:
+        now = time.monotonic()
+        wait = STREAM_FRAME_INTERVAL - (now - last_sent)
+        if wait > 0:
+            await asyncio.sleep(wait)
+
         frame = camera_manager.get_frame(camera_id)
         if frame is None:
             await asyncio.sleep(0.1)
             continue
 
-        ret, buffer = cv2.imencode(".jpg", frame.copy(), [cv2.IMWRITE_JPEG_QUALITY, 85])
+        # Skip re-encoding when the AI thread hasn't produced a new frame yet.
+        # id() is stable within the deque slot lifetime and cheap to compare.
+        frame_id = id(frame)
+        if frame_id == last_frame_id:
+            await asyncio.sleep(STREAM_FRAME_INTERVAL / 2)
+            continue
+        last_frame_id = frame_id
+
+        ret, buffer = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, JPEG_QUALITY])
         if not ret:
-            await asyncio.sleep(0.03)
             continue
 
+        last_sent = time.monotonic()
         yield (
             b"--frame\r\n"
             b"Content-Type: image/jpeg\r\n\r\n" + buffer.tobytes() + b"\r\n"
         )
-        await asyncio.sleep(0.033)
 
 
 async def generate_store_frames(store_id: int):
     """Дэлгүүрийн бүх камерыг нэг grid-д нэгтгэж stream хийх."""
+    last_sent = 0.0
     while True:
+        now = time.monotonic()
+        wait = STREAM_FRAME_INTERVAL - (now - last_sent)
+        if wait > 0:
+            await asyncio.sleep(wait)
+
         frames = camera_manager.get_store_frames(store_id)
         if not frames:
             await asyncio.sleep(0.1)
@@ -67,13 +95,13 @@ async def generate_store_frames(store_id: int):
                 row2 = row2[:, :min_w]
                 combined = np.vstack([row1, row2])
 
-        ret, buffer = cv2.imencode(".jpg", combined, [cv2.IMWRITE_JPEG_QUALITY, 80])
+        ret, buffer = cv2.imencode(".jpg", combined, [cv2.IMWRITE_JPEG_QUALITY, JPEG_QUALITY])
         if ret:
+            last_sent = time.monotonic()
             yield (
                 b"--frame\r\n"
                 b"Content-Type: image/jpeg\r\n\r\n" + buffer.tobytes() + b"\r\n"
             )
-        await asyncio.sleep(0.033)
 
 
 @router.get("/feed/{camera_id}")

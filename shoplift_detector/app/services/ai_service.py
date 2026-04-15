@@ -1,5 +1,6 @@
 # app/services/ai_service.py
 
+import contextlib
 import logging
 import math
 import os
@@ -40,8 +41,27 @@ class ShopliftDetector:
         self.device = device_type
         self.executor = ThreadPoolExecutor(max_workers=4)
 
+        # Half-precision is a GPU feature: PyTorch CPU ops largely lack fp16
+        # kernels and silently upcast (or crash). Only enable on CUDA/MPS.
+        self.half = device_type in ("cuda", "mps")
+
         self.pose_model = YOLO("yolo11m-pose.pt").to(self.device)
         self.det_model  = YOLO("yolo11n.pt").to(self.device)
+
+        # Fusing Conv+BN layers is a one-time cost that cuts per-frame latency
+        # by ~10-15% with no accuracy impact.
+        with contextlib.suppress(Exception):
+            self.pose_model.fuse()
+            self.det_model.fuse()
+
+        if self.device == "cpu":
+            # Single-process multi-camera: give torch all the cores.
+            # intra-op threads do the heavy lifting; keep inter-op small so
+            # two concurrent model calls don't thrash the scheduler.
+            cpu_count = os.cpu_count() or 4
+            torch.set_num_threads(max(1, cpu_count - 1))
+            with contextlib.suppress(Exception):
+                torch.set_num_interop_threads(2)
 
         self.tracker_history: dict = {}
         self.last_alert_time: dict = {}
@@ -311,22 +331,27 @@ class ShopliftDetector:
             if self.frame_count % 50 == 0:
                 self._cleanup_stale_tracks()
 
-            pose_results = self.pose_model.track(
-                frame, persist=True, device=self.device, verbose=False, imgsz=320
-            )
-
-            if self.frame_count % 3 == 0:
-                self._cached_expensive_items = []
-                det_results = self.det_model.predict(
-                    frame, conf=0.4, device=self.device, verbose=False
+            # inference_mode() disables autograd bookkeeping → lower memory
+            # footprint and ~5-10% faster than no_grad on CPU.
+            with torch.inference_mode():
+                pose_results = self.pose_model.track(
+                    frame, persist=True, device=self.device,
+                    verbose=False, imgsz=320, half=self.half,
                 )
-                if det_results[0].boxes is not None:
-                    for box in det_results[0].boxes:
-                        lbl = self.det_model.names[int(box.cls[0])]
-                        if lbl in ["cell phone", "bottle", "handbag", "laptop"]:
-                            self._cached_expensive_items.append({
-                                "box": box.xyxy[0].cpu().numpy(), "label": lbl
-                            })
+
+                if self.frame_count % 3 == 0:
+                    self._cached_expensive_items = []
+                    det_results = self.det_model.predict(
+                        frame, conf=0.4, device=self.device,
+                        verbose=False, half=self.half,
+                    )
+                    if det_results[0].boxes is not None:
+                        for box in det_results[0].boxes:
+                            lbl = self.det_model.names[int(box.cls[0])]
+                            if lbl in ["cell phone", "bottle", "handbag", "laptop"]:
+                                self._cached_expensive_items.append({
+                                    "box": box.xyxy[0].cpu().numpy(), "label": lbl
+                                })
 
             expensive_items = self._cached_expensive_items
 

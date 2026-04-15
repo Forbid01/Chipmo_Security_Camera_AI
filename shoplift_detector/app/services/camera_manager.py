@@ -7,6 +7,7 @@ import os
 import queue
 import threading
 import time
+from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime
 
@@ -58,13 +59,28 @@ class CameraState:
     is_ai_enabled: bool
     alert_threshold: float = 80.0
     alert_cooldown: int = 15
-    # Runtime state
+    # Runtime state. `frame_buffer` is a 1-slot deque so an appendleft()
+    # by the capture thread atomically drops the previous (stale) frame —
+    # readers always see the newest frame, never a torn write.
     thread: threading.Thread | None = None
-    latest_frame: object | None = None  # numpy array
+    frame_buffer: deque = field(default_factory=lambda: deque(maxlen=1))
+    frame_condition: threading.Condition = field(default_factory=threading.Condition)
     is_connected: bool = False
     fps: float = 0.0
     last_frame_at: datetime | None = None
     _stop_event: threading.Event = field(default_factory=threading.Event)
+
+    @property
+    def latest_frame(self):
+        # Back-compat shim for ai_service which assigns to this attribute
+        # after annotating a frame. Reading returns the newest buffered frame.
+        return self.frame_buffer[0] if self.frame_buffer else None
+
+    @latest_frame.setter
+    def latest_frame(self, frame):
+        self.frame_buffer.append(frame)
+        with self.frame_condition:
+            self.frame_condition.notify_all()
 
 
 class CameraManager:
@@ -172,7 +188,11 @@ class CameraManager:
                     state.is_connected = False
                     continue
 
-                state.latest_frame = frame
+                # deque(maxlen=1).append() drops any unconsumed prior frame,
+                # so memory stays bounded even if readers fall behind.
+                state.frame_buffer.append(frame)
+                with state.frame_condition:
+                    state.frame_condition.notify_all()
                 state.last_frame_at = datetime.now()
                 frame_count += 1
 
@@ -210,17 +230,51 @@ class CameraManager:
 
     def get_frame(self, camera_id: int) -> object | None:
         state = self._cameras.get(camera_id)
-        if state and state.latest_frame is not None:
-            return state.latest_frame.copy()
-        return None
+        if not state:
+            return None
+        frame = state.latest_frame
+        return frame.copy() if frame is not None else None
+
+    def wait_for_frame(self, camera_id: int, timeout: float = 1.0):
+        """Block until a new frame is available — lets consumers idle without
+        burning CPU on polling loops. Returns the frame or None on timeout."""
+        state = self._cameras.get(camera_id)
+        if not state:
+            return None
+        with state.frame_condition:
+            state.frame_condition.wait(timeout=timeout)
+        return self.get_frame(camera_id)
 
     def get_store_frames(self, store_id: int) -> list:
         frames = []
         with self._lock:
             for state in self._cameras.values():
-                if state.store_id == store_id and state.latest_frame is not None:
-                    frames.append(state.latest_frame.copy())
+                if state.store_id == store_id:
+                    frame = state.latest_frame
+                    if frame is not None:
+                        frames.append(frame.copy())
         return frames
+
+    def shutdown_all(self):
+        """Graceful stop — signals every capture thread, releases VideoCapture
+        handles, and destroys any OpenCV windows. Call from lifespan shutdown
+        so Railway doesn't leave ghost ffmpeg processes on redeploy."""
+        with self._lock:
+            states = list(self._cameras.values())
+            self._cameras.clear()
+
+        for state in states:
+            state._stop_event.set()
+            with state.frame_condition:
+                state.frame_condition.notify_all()
+
+        for state in states:
+            if state.thread and state.thread.is_alive():
+                state.thread.join(timeout=2.0)
+
+        with contextlib.suppress(Exception):
+            cv2.destroyAllWindows()
+        logger.info("camera_manager_shutdown_complete")
 
     def get_all_status(self) -> list[dict]:
         statuses = []

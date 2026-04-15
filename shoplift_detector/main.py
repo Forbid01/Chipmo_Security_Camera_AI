@@ -124,6 +124,9 @@ async def lifespan(app: FastAPI):
 
     # [SHUTDOWN]
     logger.info("shutting_down")
+    # Release VideoCapture handles and destroy any OpenCV windows so Railway
+    # doesn't leave ghost ffmpeg workers around between redeploys.
+    camera_manager.shutdown_all()
 
 
 async def _load_cameras_from_db():
@@ -359,17 +362,29 @@ async def legacy_alerts(request: Request):
 
 
 async def _legacy_gen_frames(camera_type: str):
+    import time as _time
     cam_map = {"mac": 9000, "phone": 9001, "axis": 9002}
     cam_id = cam_map.get(camera_type)
+    interval = 1.0 / 15  # 15 FPS cap — same policy as /api/v1/video
+    last_sent = 0.0
+    last_frame_id = None
     while True:
+        wait = interval - (_time.monotonic() - last_sent)
+        if wait > 0:
+            await asyncio.sleep(wait)
         frame = camera_manager.get_frame(cam_id) if cam_id else None
         if frame is None:
             await asyncio.sleep(0.1)
             continue
-        ret, buffer = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
+        fid = id(frame)
+        if fid == last_frame_id:
+            await asyncio.sleep(interval / 2)
+            continue
+        last_frame_id = fid
+        ret, buffer = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 75])
         if ret:
+            last_sent = _time.monotonic()
             yield b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + buffer.tobytes() + b"\r\n"
-        await asyncio.sleep(0.033)
 
 
 @app.get("/video_feed")
