@@ -3,6 +3,7 @@ Runtime-д камер нэмэх/хасах боломжтой, restart шаар
 
 import contextlib
 import logging
+import os
 import queue
 import threading
 import time
@@ -13,6 +14,38 @@ import cv2
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
+
+
+def _resolve_source(url: str, camera_type: str):
+    """Return an opencv-compatible source or None if unusable on this host.
+
+    USB/integer sources are validated against /dev/videoN so headless
+    servers (Railway, Docker without --device) don't enter an infinite
+    reconnect loop trying to open a camera that can never exist.
+    """
+    override = os.getenv("CAMERA_SOURCE") or settings.CAMERA_SOURCE
+    if override:
+        url = override
+
+    if camera_type == "usb":
+        try:
+            idx = int(url)
+        except (TypeError, ValueError):
+            return None
+        if idx < 0:
+            return None
+        device_path = f"/dev/video{idx}"
+        if not os.path.exists(device_path):
+            logger.warning(
+                "Skipping USB camera index %s — %s not present on host",
+                idx, device_path,
+            )
+            return None
+        return idx
+
+    if not url:
+        return None
+    return url
 
 
 @dataclass
@@ -94,10 +127,14 @@ class CameraManager:
                 self.ai_input_queue.put_nowait(payload)
 
     def _capture_loop(self, state: CameraState):
-        source = state.url
-        if state.camera_type == "usb":
-            with contextlib.suppress(ValueError):
-                source = int(source)
+        source = _resolve_source(state.url, state.camera_type)
+        if source is None:
+            logger.warning(
+                f"[{state.name}] No usable video source on this host — "
+                f"camera will stay offline"
+            )
+            state.is_connected = False
+            return
 
         logger.info(f"[{state.name}] Connecting to {source}")
         cap = self._open_capture(state, source)

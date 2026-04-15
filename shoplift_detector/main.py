@@ -1,15 +1,20 @@
-import asyncio
 import os
-import random
-import string
-import sys
-import threading
-from contextlib import asynccontextmanager
-from datetime import UTC, datetime, timedelta
-from typing import Annotated
 
-import cv2
-import uvicorn
+# Must be set BEFORE ultralytics is imported anywhere — Railway has no
+# writable ~/.config, so ultralytics otherwise spams warnings and falls back.
+os.environ.setdefault("YOLO_CONFIG_DIR", "/tmp")
+
+import asyncio  # noqa: E402
+import random  # noqa: E402
+import string  # noqa: E402
+import sys  # noqa: E402
+import threading  # noqa: E402
+from contextlib import asynccontextmanager  # noqa: E402
+from datetime import UTC, datetime, timedelta  # noqa: E402
+from typing import Annotated  # noqa: E402
+
+import cv2  # noqa: E402
+import uvicorn  # noqa: E402
 
 # Path setup (must run before any `app.*` imports so the project root resolves)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -146,18 +151,50 @@ async def _load_cameras_from_db():
     except Exception as e:
         logger.error("camera_load_error", error=str(e))
 
+    # Single-source override (CAMERA_SOURCE) wins when set — lets a Railway
+    # deploy point at an RTSP URL without touching the DB.
+    if settings.CAMERA_SOURCE:
+        cam_type = "usb" if settings.CAMERA_SOURCE.isdigit() else "rtsp"
+        camera_manager.register_camera(
+            camera_id=9000,
+            store_id=0,
+            name="Default",
+            url=settings.CAMERA_SOURCE,
+            camera_type=cam_type,
+        )
+        return
+
+    # Default-camera bootstrap is opt-in. It's useful locally (Mac webcam,
+    # phone IP cam) but dangerous in prod — Railway has no /dev/video0,
+    # which previously caused an infinite RTSP reconnect loop.
+    if not settings.ENABLE_DEFAULT_CAMERAS:
+        return
+
     from app.core.config import DEFAULT_CAMERA_SOURCES
     default_id = 9000
     for cam_type, source in DEFAULT_CAMERA_SOURCES.items():
-        if source or source == 0:
-            camera_manager.register_camera(
-                camera_id=default_id,
-                store_id=0,
-                name=f"Default-{cam_type}",
-                url=str(source),
-                camera_type="usb" if cam_type == "mac" else "mjpeg",
-            )
-            default_id += 1
+        if cam_type == "mac":
+            idx = settings.MAC_CAMERA_INDEX
+            if idx is None or idx < 0:
+                continue
+            if not os.path.exists(f"/dev/video{idx}"):
+                logger.info(
+                    "skipping_default_mac_camera",
+                    reason="no_video_device",
+                    index=idx,
+                )
+                continue
+            source = idx
+        if not source and source != 0:
+            continue
+        camera_manager.register_camera(
+            camera_id=default_id,
+            store_id=0,
+            name=f"Default-{cam_type}",
+            url=str(source),
+            camera_type="usb" if cam_type == "mac" else "mjpeg",
+        )
+        default_id += 1
 
 
 def _auto_learning_loop():

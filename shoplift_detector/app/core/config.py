@@ -4,6 +4,11 @@ from functools import lru_cache
 from pydantic import field_validator
 from pydantic_settings import BaseSettings
 
+# Ultralytics writes per-user config to ~/.config/Ultralytics — not writable in
+# Railway's read-only container home. Point it at /tmp before any ultralytics
+# import touches the filesystem.
+os.environ.setdefault("YOLO_CONFIG_DIR", "/tmp")
+
 
 class Settings(BaseSettings):
     # App
@@ -37,10 +42,15 @@ class Settings(BaseSettings):
     MAIL_PASSWORD: str | None = None
     MAIL_FROM: str | None = None
 
-    # Camera defaults
+    # Camera defaults — MAC index < 0 disables the local USB fallback,
+    # which must stay off on headless servers (Railway has no /dev/video0).
     WIFI_CAMERA_URL: str = ""
     AXIS_CAMERA_URL: str = ""
-    MAC_CAMERA_INDEX: int = 0
+    MAC_CAMERA_INDEX: int = -1
+    ENABLE_DEFAULT_CAMERAS: bool = False
+    # Optional single-source override. Accepts an RTSP/HTTP URL or a USB
+    # index string ("0"). Empty = no default stream (headless-safe).
+    CAMERA_SOURCE: str = ""
 
     # AI
     AI_SCORE_ALERT_TRIGGER: float = 80.0
