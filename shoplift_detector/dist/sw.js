@@ -1,5 +1,5 @@
-const CACHE_NAME = 'chipmo-v1';
-const STATIC_ASSETS = ['/', '/index.html', '/favicon.svg'];
+const CACHE_NAME = 'chipmo-v3';
+const STATIC_ASSETS = ['/favicon.svg'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -18,12 +18,24 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
-  // Network-first for API calls, cache-first for static assets
-  if (event.request.url.includes('/api/') || event.request.url.includes('/token')) {
-    event.respondWith(fetch(event.request).catch(() => caches.match(event.request)));
-  } else {
-    event.respondWith(
-      caches.match(event.request).then((cached) => cached || fetch(event.request))
-    );
+  const req = event.request;
+  if (req.method !== 'GET') return;
+
+  const url = new URL(req.url);
+
+  // Never cache API, auth, or SPA navigations. Hash-busted /assets/ come
+  // straight from the network too — serving a stale bundle after a Railway
+  // redeploy is what produced the 404 spam.
+  const isApi = url.pathname.startsWith('/api/') || url.pathname === '/token';
+  const isHashedAsset = url.pathname.startsWith('/assets/');
+  const isNavigation = req.mode === 'navigate' || req.destination === 'document';
+
+  if (isApi || isHashedAsset || isNavigation) {
+    event.respondWith(fetch(req));
+    return;
   }
+
+  event.respondWith(
+    caches.match(req).then((cached) => cached || fetch(req))
+  );
 });

@@ -111,7 +111,12 @@ async def lifespan(app: FastAPI):
     logger.info("starting_background_services")
     threading.Thread(target=alert_worker, daemon=True, name="alert-worker").start()
     threading.Thread(target=ai_inference, daemon=True, name="ai-inference").start()
-    threading.Thread(target=_auto_learning_loop, daemon=True, name="auto-learner").start()
+    # Auto-learner lives on the main event loop so AsyncSessionLocal/engine
+    # stay bound to one loop — a separate thread loop crashed asyncpg with
+    # "attached to a different loop" during connection teardown.
+    auto_learner_task = asyncio.create_task(
+        _auto_learning_task(), name="auto-learner"
+    )
 
     if settings.SENTRY_DSN:
         try:
@@ -125,6 +130,11 @@ async def lifespan(app: FastAPI):
 
     # [SHUTDOWN]
     logger.info("shutting_down")
+    auto_learner_task.cancel()
+    try:
+        await auto_learner_task
+    except (asyncio.CancelledError, Exception):
+        pass
     # Release VideoCapture handles and destroy any OpenCV windows so Railway
     # doesn't leave ghost ffmpeg workers around between redeploys.
     camera_manager.shutdown_all()
@@ -201,18 +211,15 @@ async def _load_cameras_from_db():
         default_id += 1
 
 
-def _auto_learning_loop():
-    """Background thread: тогтмол хугацаанд feedback-ээс суралцах."""
-    import time
-
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-
+async def _auto_learning_task():
+    """Feedback-ээс суралцах background task (main event loop дотор)."""
     while True:
         try:
-            time.sleep(300)
+            await asyncio.sleep(300)
             if settings.AI_AUTO_LEARN:
-                loop.run_until_complete(_run_auto_learning())
+                await _run_auto_learning()
+        except asyncio.CancelledError:
+            raise
         except Exception as e:
             logger.error("auto_learning_error", error=str(e))
 
@@ -525,11 +532,21 @@ if os.path.exists(dist_path):
         if request_path:
             candidate = os.path.normpath(os.path.join(dist_path, request_path))
             if candidate.startswith(dist_path) and os.path.isfile(candidate):
+                # sw.js and index.html must never be cached — otherwise a
+                # redeploy keeps pointing clients at dead hashed bundles.
+                if request_path in ("sw.js", "index.html"):
+                    return FileResponse(
+                        candidate,
+                        headers={"Cache-Control": "no-cache, no-store, must-revalidate"},
+                    )
                 return FileResponse(candidate)
 
         index_file = os.path.join(dist_path, "index.html")
         if os.path.exists(index_file):
-            return FileResponse(index_file)
+            return FileResponse(
+                index_file,
+                headers={"Cache-Control": "no-cache, no-store, must-revalidate"},
+            )
         return JSONResponse(status_code=500, content={"error": "Frontend build not found"})
 
     @app.get("/")
