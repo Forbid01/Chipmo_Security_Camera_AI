@@ -1,7 +1,8 @@
 import axios from "axios";
 
 export const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL || "https://chipmosecuritycameraai-production.up.railway.app";
+  import.meta.env.VITE_API_BASE_URL ||
+  "https://chipmosecuritycameraai-production.up.railway.app";
 
 // Legacy video URLs (backward compat)
 export const VIDEO_FEED_URL = `${API_BASE_URL}/video_feed`;
@@ -40,7 +41,10 @@ api.interceptors.response.use(
       localStorage.removeItem("token");
       localStorage.removeItem("user");
       // Redirect to login if not already there
-      if (window.location.pathname !== "/" && window.location.pathname !== "/login") {
+      if (
+        window.location.pathname !== "/" &&
+        window.location.pathname !== "/login"
+      ) {
         window.location.href = "/login";
       }
     }
@@ -68,7 +72,8 @@ export const registerUser = async (userData) => {
 export const logoutUser = async () => {
   try {
     await api.post("/api/v1/auth/logout");
-  } catch (e) {
+  } catch (error) {
+    console.error(error);
     // Ignore errors on logout
   }
   localStorage.removeItem("token");
@@ -96,7 +101,9 @@ export const verifyCode = async (email, code) => {
 
 export const resetPassword = async (email, code, newPassword) => {
   const response = await api.post("/reset-password", {
-    email, code, new_password: newPassword,
+    email,
+    code,
+    new_password: newPassword,
   });
   return response.data;
 };
@@ -262,7 +269,11 @@ export const deleteMyCamera = async (id) => {
 // AI FEEDBACK & AUTO-LEARNING (NEW)
 // ============================================
 
-export const submitAlertFeedback = async (alertId, feedbackType, notes = null) => {
+export const submitAlertFeedback = async (
+  alertId,
+  feedbackType,
+  notes = null,
+) => {
   const response = await api.post("/api/v1/feedback", {
     alert_id: alertId,
     feedback_type: feedbackType, // "true_positive" | "false_positive"
@@ -279,7 +290,9 @@ export const getFeedbackStats = async (storeId = null) => {
 
 export const getLearningStatus = async (storeId = null) => {
   const params = storeId ? { store_id: storeId } : {};
-  const response = await api.get("/api/v1/feedback/learning-status", { params });
+  const response = await api.get("/api/v1/feedback/learning-status", {
+    params,
+  });
   return response.data;
 };
 

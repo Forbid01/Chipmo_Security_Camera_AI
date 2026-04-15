@@ -67,7 +67,9 @@ function Dashboard() {
         if (data && typeof data === 'object') {
           setCameraStatuses(data);
         }
-      } catch {}
+      } catch (error) {
+        console.error('Камерын төлөв шалгахад алдаа гарлаа:', error);
+      }
     };
     fetchStatus();
     const interval = setInterval(fetchStatus, 30000);
@@ -99,6 +101,17 @@ function Dashboard() {
   };
 
   const storeCameras = cameras.filter(c => c.store_id === activeStore);
+  const filteredAlerts = useMemo(() => {
+      return alerts.filter(alert => {
+        const date = new Date(alert.event_time.replace(' ', 'T'));
+        const alertDay = date.toLocaleDateString('en-US', { weekday: 'short' });
+        const alertHour = date.getHours();
+        const matchesDay = selectedDay ? alertDay === selectedDay : true;
+        const matchesHour = selectedHour !== null ? alertHour === selectedHour : true;
+        const matchesStore = activeStore ? (alert.store_id === activeStore) : true;
+        return matchesDay && matchesHour && matchesStore;
+      });
+    }, [alerts, selectedDay, selectedHour, activeStore]);
 
   // CSV export
   const exportCSV = useCallback(() => {
@@ -119,7 +132,7 @@ function Dashboard() {
     a.download = `chipmo_alerts_${new Date().toISOString().slice(0, 10)}.csv`;
     a.click();
     URL.revokeObjectURL(url);
-  }, []);
+  }, [filteredAlerts]);
 
   const hourlyChartData = useMemo(() => {
     const dayAlerts = selectedDay
@@ -133,18 +146,6 @@ function Dashboard() {
     return hours;
   }, [alerts, selectedDay]);
 
-  const filteredAlerts = useMemo(() => {
-    return alerts.filter(alert => {
-      const date = new Date(alert.event_time.replace(' ', 'T'));
-      const alertDay = date.toLocaleDateString('en-US', { weekday: 'short' });
-      const alertHour = date.getHours();
-      const matchesDay = selectedDay ? alertDay === selectedDay : true;
-      const matchesHour = selectedHour !== null ? alertHour === selectedHour : true;
-      const matchesStore = activeStore ? (alert.store_id === activeStore) : true;
-      return matchesDay && matchesHour && matchesStore;
-    });
-  }, [alerts, selectedDay, selectedHour, activeStore]);
-
   const handleLogout = () => {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
@@ -152,7 +153,7 @@ function Dashboard() {
   };
 
   // Sidebar content (shared between desktop and mobile)
-  const SidebarContent = () => (
+  const renderSidebarContent = () => (
     <>
       {/* LOGO */}
       <div
@@ -315,21 +316,23 @@ function Dashboard() {
 
       {/* SIDEBAR — hidden on mobile, slide-in when open */}
       <aside className={`
-        fixed lg:relative inset-y-0 left-0 z-[70]
-        w-72 bg-[#0f172a]/95 lg:bg-[#0f172a]/40 backdrop-blur-3xl border-r border-slate-800/50
-        flex flex-col
-        transform transition-transform duration-300 ease-in-out
-        ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
-      `}>
-        {/* Mobile close button */}
-        <button
-          onClick={() => setSidebarOpen(false)}
-          className="lg:hidden absolute top-4 right-4 p-2 rounded-lg text-slate-400 hover:text-white z-10"
-        >
-          <X size={20} />
-        </button>
-        <SidebarContent />
-      </aside>
+    fixed lg:relative inset-y-0 left-0 z-[70]
+    w-72 bg-[#0f172a]/95 lg:bg-[#0f172a]/40 backdrop-blur-3xl border-r border-slate-800/50
+    flex flex-col
+    transform transition-transform duration-300 ease-in-out
+    ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
+  `}>
+    {/* Mobile close button */}
+    <button
+      onClick={() => setSidebarOpen(false)}
+      className="lg:hidden absolute top-4 right-4 p-2 rounded-lg text-slate-400 hover:text-white z-10"
+    >
+      <X size={20} />
+    </button>
+    
+    {renderSidebarContent()}
+    
+</aside>
 
       {/* MAIN CONTENT */}
       <main className="flex-1 overflow-y-auto relative z-10 p-4 md:p-6 lg:p-10 scrollbar-hide">
@@ -560,7 +563,9 @@ function AlertDetailModal({ alert, onClose, onPlayVideo }) {
     try {
       await submitAlertFeedback(alert.id, type);
       setFeedbackStatus(type);
-    } catch {} finally { setLoading(false); }
+    } catch (error){
+      console.error('Feedback error:', error);
+    } finally { setLoading(false); }
   };
 
   return (
