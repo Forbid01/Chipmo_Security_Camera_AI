@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars */
 import { useNavigate } from 'react-router-dom';
 import { ShieldCheck, ArrowLeft, Home } from 'lucide-react';
 import { motion } from 'framer-motion';
