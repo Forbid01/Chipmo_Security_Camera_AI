@@ -235,6 +235,9 @@ class CameraManager:
         frame = state.latest_frame
         return frame.copy() if frame is not None else None
 
+    def has_camera(self, camera_id: int) -> bool:
+        return camera_id in self._cameras
+
     def wait_for_frame(self, camera_id: int, timeout: float = 1.0):
         """Block until a new frame is available — lets consumers idle without
         burning CPU on polling loops. Returns the frame or None on timeout."""

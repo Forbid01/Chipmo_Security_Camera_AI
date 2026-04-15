@@ -51,7 +51,13 @@ export default function Register() {
         navigate('/login');
       }
     } catch (err) {
-      const errorMsg = err.response?.data?.detail || "REGISTRATION FAILED: VALIDATION ERROR";
+      const detail = err.response?.data?.detail;
+      let errorMsg = "REGISTRATION FAILED: VALIDATION ERROR";
+      if (typeof detail === 'string') {
+        errorMsg = detail;
+      } else if (Array.isArray(detail) && detail.length > 0) {
+        errorMsg = detail.map(d => d.msg || d.message || '').filter(Boolean).join('; ');
+      }
       setError(errorMsg);
     } finally {
       setLoading(false);

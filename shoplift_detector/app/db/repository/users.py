@@ -107,6 +107,16 @@ class UserRepository:
         row = result.fetchone()
         return row[0] if row else None
 
+    async def get_or_create_organization(self, name: str) -> int | None:
+        existing = await self.db.execute(
+            text("SELECT id FROM organizations WHERE name = :name LIMIT 1"),
+            {"name": name},
+        )
+        row = existing.fetchone()
+        if row:
+            return row[0]
+        return await self.create_organization(name)
+
     async def get_all_organizations(self) -> list[dict[str, Any]]:
         query = text("SELECT id, name, created_at FROM organizations ORDER BY created_at DESC")
         result = await self.db.execute(query)

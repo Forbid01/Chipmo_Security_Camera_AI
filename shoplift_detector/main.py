@@ -411,6 +411,11 @@ async def legacy_register(user_data: UserCreateSchema):
         existing_email = await repo.get_by_email(user_data.email)
         if existing_email:
             raise HTTPException(status_code=400, detail="Имэйл бүртгэлтэй байна")
+
+        org_id = None
+        if user_data.org_name:
+            org_id = await repo.get_or_create_organization(user_data.org_name.strip())
+
         hashed_pwd = get_password_hash(user_data.password)
         user_id = await repo.create(
             username=user_data.username,
@@ -418,6 +423,7 @@ async def legacy_register(user_data: UserCreateSchema):
             phone_number=user_data.phone_number,
             hashed_password=hashed_pwd,
             full_name=user_data.full_name,
+            organization_id=org_id,
         )
     return {"message": "Хэрэглэгч амжилттай бүртгэгдлээ", "user_id": user_id}
 

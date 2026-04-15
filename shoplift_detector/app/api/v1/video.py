@@ -5,7 +5,7 @@ import cv2
 import numpy as np
 from app.core.security import CurrentUser
 from app.services.camera_manager import camera_manager
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 
 router = APIRouter()
@@ -107,6 +107,8 @@ async def generate_store_frames(store_id: int):
 @router.get("/feed/{camera_id}")
 async def video_feed(camera_id: int, user: CurrentUser):
     """Нэг камерын live stream (authenticated)."""
+    if not camera_manager.has_camera(camera_id):
+        raise HTTPException(status_code=404, detail="Камер бүртгэгдээгүй")
     return StreamingResponse(
         generate_camera_frames(camera_id),
         media_type="multipart/x-mixed-replace; boundary=frame",

@@ -63,7 +63,13 @@ export default function Login() {
         }, 100);
       }
     } catch (err) {
-      const errorMsg = err.response?.data?.detail || "ACCESS DENIED: SYSTEM BREACH PREVENTED";
+      const detail = err.response?.data?.detail;
+      let errorMsg = "ACCESS DENIED: SYSTEM BREACH PREVENTED";
+      if (typeof detail === 'string') {
+        errorMsg = detail;
+      } else if (Array.isArray(detail) && detail.length > 0) {
+        errorMsg = detail.map(d => d.msg || d.message || '').filter(Boolean).join('; ');
+      }
       setError(errorMsg);
     } finally {
       setLoading(false);

@@ -46,6 +46,10 @@ async def register(user_data: UserCreate, db: DB):
     if existing_email:
         raise HTTPException(status_code=400, detail="Имэйл бүртгэлтэй байна")
 
+    org_id = None
+    if user_data.org_name:
+        org_id = await repo.get_or_create_organization(user_data.org_name.strip())
+
     hashed_pwd = get_password_hash(user_data.password)
     user_id = await repo.create(
         username=user_data.username,
@@ -53,6 +57,7 @@ async def register(user_data: UserCreate, db: DB):
         phone_number=user_data.phone_number,
         hashed_password=hashed_pwd,
         full_name=user_data.full_name,
+        organization_id=org_id,
     )
     return APIResponse(message="Хэрэглэгч амжилттай бүртгэгдлээ", data={"user_id": user_id})
 
