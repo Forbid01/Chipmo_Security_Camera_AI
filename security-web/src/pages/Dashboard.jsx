@@ -39,10 +39,12 @@ function Dashboard() {
 
   const VIDEO_FEED_URL = activeCamera ? getVideoFeedUrlV2(activeCamera) : null;
 
-  // Load data
+  // Load data — cancellable so unmount mid-flight doesn't leak setState.
   useEffect(() => {
+    let cancelled = false;
     Promise.all([getUserProfile(), getMyStores(), getMyCameras()])
       .then(([profile, storesData, camerasData]) => {
+        if (cancelled) return;
         setUserInfo(profile);
         localStorage.setItem('user', JSON.stringify(profile));
         const storesList = Array.isArray(storesData) ? storesData : [];
@@ -56,24 +58,64 @@ function Dashboard() {
         }
       })
       .catch(() => {})
-      .finally(() => setLoadingStores(false));
+      .finally(() => { if (!cancelled) setLoadingStores(false); });
+
+    return () => { cancelled = true; };
   }, []);
 
-  // Camera status polling
+  // Camera status polling — visibility-aware, cancellable.
   useEffect(() => {
+    let cancelled = false;
+    let timer = null;
+    const controller = new AbortController();
+
     const fetchStatus = async () => {
+      if (cancelled || document.visibilityState !== 'visible') return;
       try {
-        const data = await getCameraStatus();
-        if (data && typeof data === 'object') {
-          setCameraStatuses(data);
+        const data = await getCameraStatus({ signal: controller.signal });
+        if (!cancelled && data && typeof data === 'object' && !Array.isArray(data)) {
+          // Only update when shape actually differs — prevents needless re-renders.
+          setCameraStatuses((prev) => {
+            const prevKeys = Object.keys(prev);
+            const nextKeys = Object.keys(data);
+            if (prevKeys.length === nextKeys.length) {
+              let same = true;
+              for (const k of nextKeys) {
+                if ((prev[k]?.online) !== (data[k]?.online) ||
+                    (prev[k]?.fps) !== (data[k]?.fps)) { same = false; break; }
+              }
+              if (same) return prev;
+            }
+            return data;
+          });
         }
-      } catch (error) {
-        console.error('Камерын төлөв шалгахад алдаа гарлаа:', error);
+      } catch {
+        // swallow — next tick will retry
       }
     };
+
+    const schedule = () => {
+      if (cancelled) return;
+      timer = setTimeout(async () => {
+        await fetchStatus();
+        schedule();
+      }, 30000);
+    };
+
     fetchStatus();
-    const interval = setInterval(fetchStatus, 30000);
-    return () => clearInterval(interval);
+    schedule();
+
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') fetchStatus();
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+      if (timer) clearTimeout(timer);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
   }, []);
 
   // Browser notification for new alerts
@@ -100,18 +142,31 @@ function Dashboard() {
     }
   };
 
-  const storeCameras = cameras.filter(c => c.store_id === activeStore);
+  const storeCameras = useMemo(
+    () => cameras.filter(c => c.store_id === activeStore),
+    [cameras, activeStore],
+  );
+
   const filteredAlerts = useMemo(() => {
-      return alerts.filter(alert => {
-        const date = new Date(alert.event_time.replace(' ', 'T'));
-        const alertDay = date.toLocaleDateString('en-US', { weekday: 'short' });
-        const alertHour = date.getHours();
-        const matchesDay = selectedDay ? alertDay === selectedDay : true;
-        const matchesHour = selectedHour !== null ? alertHour === selectedHour : true;
-        const matchesStore = activeStore ? (alert.store_id === activeStore) : true;
-        return matchesDay && matchesHour && matchesStore;
-      });
-    }, [alerts, selectedDay, selectedHour, activeStore]);
+    const result = [];
+    for (const alert of alerts) {
+      if (!alert.event_time) continue;
+      const date = new Date(alert.event_time.replace(' ', 'T'));
+      if (isNaN(date.getTime())) continue;
+      const alertDay = date.toLocaleDateString('en-US', { weekday: 'short' });
+      const alertHour = date.getHours();
+      if (selectedDay && alertDay !== selectedDay) continue;
+      if (selectedHour !== null && alertHour !== selectedHour) continue;
+      if (activeStore && alert.store_id !== activeStore) continue;
+      result.push(alert);
+    }
+    return result;
+  }, [alerts, selectedDay, selectedHour, activeStore]);
+
+  const reversedAlerts = useMemo(
+    () => filteredAlerts.slice().reverse(),
+    [filteredAlerts],
+  );
 
   // CSV export
   const exportCSV = useCallback(() => {
@@ -458,7 +513,7 @@ function Dashboard() {
                 </div>
                 <div className="w-full relative aspect-video flex items-center justify-center bg-slate-950">
                   {VIDEO_FEED_URL ? (
-                    <img key={activeCamera} src={VIDEO_FEED_URL} className="w-full h-full object-contain" alt="AI Feed" />
+                    <LiveStream src={VIDEO_FEED_URL} cameraId={activeCamera} />
                   ) : (
                     <div className="flex flex-col items-center gap-4 text-slate-600">
                       <Camera size={48} />
@@ -522,7 +577,7 @@ function Dashboard() {
                         <p className="tracking-widest uppercase text-[10px]">Энэ хугацаанд зөрчил илрээгүй</p>
                       </motion.div>
                     ) : (
-                      [...filteredAlerts].reverse().map((alert, index) => (
+                      reversedAlerts.map((alert, index) => (
                         <motion.div key={alert.id || index} initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} layout
                           onClick={() => setSelectedAlert(alert)}
                           className="cursor-pointer"
@@ -545,6 +600,60 @@ function Dashboard() {
     </div>
   );
 }
+
+// Visibility-aware MJPEG stream. Closes the connection when the tab is hidden
+// or the component is off-screen; rAF-scheduled resume avoids a render spike.
+const LiveStream = React.memo(function LiveStream({ src, cameraId }) {
+  const imgRef = useRef(null);
+  const [active, setActive] = useState(
+    typeof document === 'undefined' || document.visibilityState === 'visible',
+  );
+
+  useEffect(() => {
+    let rafId = null;
+
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        if (rafId) cancelAnimationFrame(rafId);
+        rafId = requestAnimationFrame(() => setActive(true));
+      } else {
+        setActive(false);
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibility);
+      if (rafId) cancelAnimationFrame(rafId);
+      // Force-close the MJPEG socket on unmount.
+      if (imgRef.current) imgRef.current.src = '';
+    };
+  }, []);
+
+  // IntersectionObserver — pause when scrolled off-screen on mobile.
+  useEffect(() => {
+    const node = imgRef.current;
+    if (!node || typeof IntersectionObserver === 'undefined') return;
+    const obs = new IntersectionObserver(
+      ([entry]) => setActive(entry.isIntersecting && document.visibilityState === 'visible'),
+      { threshold: 0.1 },
+    );
+    obs.observe(node);
+    return () => obs.disconnect();
+  }, []);
+
+  return (
+    <img
+      ref={imgRef}
+      key={cameraId}
+      src={active ? src : ''}
+      alt="AI Feed"
+      decoding="async"
+      loading="lazy"
+      className="w-full h-full object-contain"
+    />
+  );
+});
 
 // Alert Detail Modal
 function AlertDetailModal({ alert, onClose, onPlayVideo }) {

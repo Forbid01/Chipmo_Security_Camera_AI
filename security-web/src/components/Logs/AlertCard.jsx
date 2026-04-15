@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { memo, useState } from 'react';
 import { Image, PlayCircle, TriangleAlert, ThumbsUp, ThumbsDown, Loader2 } from 'lucide-react';
 import { submitAlertFeedback } from '../../services/api';
 
-export const AlertCard = ({ alert, onSelect }) => {
+const AlertCardInner = ({ alert, onSelect }) => {
   const [feedbackStatus, setFeedbackStatus] = useState(alert?.feedback_status || 'unreviewed');
   const [loading, setLoading] = useState(false);
 
@@ -124,3 +124,21 @@ export const AlertCard = ({ alert, onSelect }) => {
     </div>
   );
 };
+
+// Only re-render if the alert identity or feedback state actually changes.
+// onSelect is stable (setState setter) so ignoring it is safe.
+const alertPropsEqual = (prev, next) => {
+  const a = prev.alert;
+  const b = next.alert;
+  if (a === b) return true;
+  if (!a || !b) return false;
+  return (
+    a.id === b.id &&
+    a.feedback_status === b.feedback_status &&
+    a.web_url === b.web_url &&
+    a.video_url === b.video_url &&
+    a.event_time === b.event_time
+  );
+};
+
+export const AlertCard = memo(AlertCardInner, alertPropsEqual);

@@ -1,4 +1,4 @@
-from app.core.security import AdminOrAbove, SuperAdmin
+from app.core.security import AdminOrAbove, CurrentUser, SuperAdmin
 from app.db.repository.camera_repo import CameraRepository
 from app.db.session import DB
 from app.schemas.camera import CameraCreate, CameraUpdate
@@ -85,6 +85,16 @@ async def delete_camera(camera_id: int, admin: SuperAdmin, db: DB):
 
 
 @router.get("/status")
-async def camera_status(admin: AdminOrAbove):
+async def camera_status(user: CurrentUser):
+    """Return camera status keyed by camera_id so the UI can O(1) lookup.
+
+    Each entry exposes both `is_connected` and its alias `online` so the
+    frontend can read a consistent field without knowing the backend name.
+    """
     from app.services.camera_manager import camera_manager
-    return camera_manager.get_all_status()
+
+    statuses = camera_manager.get_all_status()
+    return {
+        str(s["camera_id"]): {**s, "online": bool(s.get("is_connected"))}
+        for s in statuses
+    }

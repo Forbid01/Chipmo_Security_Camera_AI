@@ -177,8 +177,8 @@ export const deleteCamera = async (id) => {
   return response.data;
 };
 
-export const getCameraStatus = async () => {
-  const response = await api.get("/api/v1/cameras/status");
+export const getCameraStatus = async (config = {}) => {
+  const response = await api.get("/api/v1/cameras/status", config);
   return response.data;
 };
 
