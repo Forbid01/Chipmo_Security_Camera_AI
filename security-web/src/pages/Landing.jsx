@@ -494,7 +494,7 @@ export default function Landing() {
               <img src="https://images.unsplash.com/photo-1764083079459-ddb9a615d50e?q=80&w=1000&auto=format&fit=crop" className="w-full h-full object-cover opacity-70 transition-all duration-700" alt="Store monitoring" />
               <motion.div animate={{ top: ["0%", "100%", "0%"] }} transition={{ duration: 4, repeat: Infinity, ease: "linear" }} className="absolute left-0 w-full h-[2px] bg-red-500 shadow-[0_0_20px_rgba(239,68,68,0.8)] z-10" />
               {/* Detection box on person */}
-              <motion.div animate={{ scale: [1, 1.03, 1], opacity: [0.7, 1, 0.7] }} transition={{ repeat: Infinity, duration: 2 }} className="absolute top-[15%] left-[35%] border-2 border-red-500 w-28 h-52 bg-red-500/10 z-10">
+              <motion.div animate={{ scale: [1, 1.03, 1], opacity: [0.7, 1, 0.7] }} transition={{ repeat: Infinity, duration: 2 }} className="absolute top-[30%] left-[39%] border-2 border-red-500 w-28 h-52 bg-red-500/10 z-10">
                 <span className="bg-red-600 text-white text-[8px] px-1.5 py-0.5 font-mono uppercase animate-pulse">Сэжигтэй: 87%</span>
                 <span className="absolute bottom-0 left-0 bg-black/60 text-amber-400 text-[7px] px-1 py-0.5 font-mono">Бараа нуух</span>
               </motion.div>
