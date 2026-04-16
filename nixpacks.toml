@@ -17,4 +17,7 @@ cmds = [
 ]
 
 [start]
-cmd = "uvicorn shoplift_detector.main:app --host 0.0.0.0 --port ${PORT:-8000}"
+# Run migrations before the server boots — nixpacks does NOT honour the
+# Procfile `release:` phase, so `alembic upgrade head` has to live here or
+# schema drift breaks every new deploy.
+cmd = "alembic upgrade head && uvicorn shoplift_detector.main:app --host 0.0.0.0 --port ${PORT:-8000}"
