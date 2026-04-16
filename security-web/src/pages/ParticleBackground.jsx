@@ -1,62 +1,94 @@
-import { useCallback } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Particles from "react-tsparticles";
 import { loadSlim } from "tsparticles-slim";
 
 const ParticleBackground = () => {
+  const containerRef = useRef(null);
+  const [shouldRender, setShouldRender] = useState(false);
+  const [reducedMotion, setReducedMotion] = useState(false);
+
+  useEffect(() => {
+    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
+    setReducedMotion(mq.matches);
+    const handler = (e) => setReducedMotion(e.matches);
+    mq.addEventListener?.("change", handler);
+    return () => mq.removeEventListener?.("change", handler);
+  }, []);
+
+  useEffect(() => {
+    const node = containerRef.current;
+    if (!node || typeof IntersectionObserver === "undefined") {
+      setShouldRender(true);
+      return;
+    }
+    const io = new IntersectionObserver(
+      ([entry]) => setShouldRender(entry.isIntersecting),
+      { rootMargin: "200px" }
+    );
+    io.observe(node);
+    return () => io.disconnect();
+  }, []);
+
   const particlesInit = useCallback(async (engine) => {
     await loadSlim(engine);
   }, []);
 
+  const options = useMemo(
+    () => ({
+      fullScreen: { enable: false },
+      background: { color: "transparent" },
+      fpsLimit: 40,
+      pauseOnBlur: true,
+      pauseOnOutsideViewport: true,
+      interactivity: {
+        events: {
+          onHover: { enable: false },
+          resize: true,
+        },
+      },
+      particles: {
+        color: { value: "#64748b" },
+        links: {
+          color: "#334155",
+          distance: 140,
+          enable: true,
+          opacity: 0.15,
+          width: 1,
+        },
+        move: {
+          enable: true,
+          speed: 0.5,
+          direction: "none",
+          outModes: { default: "out" },
+        },
+        number: {
+          density: { enable: true, area: 1000 },
+          value: 32,
+        },
+        opacity: { value: 0.25 },
+        shape: { type: "circle" },
+        size: { value: { min: 1, max: 2 } },
+      },
+      detectRetina: false,
+    }),
+    []
+  );
+
   return (
-    <Particles
-      id="tsparticles"
-      init={particlesInit}
+    <div
+      ref={containerRef}
       className="absolute inset-0 z-0 pointer-events-none"
-      options={{
-        fullScreen: { enable: false },
-        background: { color: "transparent" },
-        fpsLimit: 60,
-        interactivity: {
-          events: {
-            onHover: {
-              enable: true,
-              mode: "grab", // Хулганаар очиход цэгүүд холбогдоно
-            },
-            resize: true,
-          },
-          modes: {
-            grab: {
-              distance: 200,
-              links: { opacity: 0.5, color: "#ef4444" }, // Улаан өнгөөр холбогдоно
-            },
-          },
-        },
-        particles: {
-          color: { value: "#64748b" }, // Үндсэн цэгүүд саарал
-          links: {
-            color: "#334155",
-            distance: 150,
-            enable: true,
-            opacity: 0.2,
-            width: 1,
-          },
-          move: {
-            enable: true,
-            speed: 1, // Маш удаан, тайван хөдөлгөөн
-            direction: "none",
-            outModes: { default: "out" },
-          },
-          number: {
-            density: { enable: true, area: 800 },
-            value: 80, // Цэгийн тоо
-          },
-          opacity: { value: 0.3 },
-          shape: { type: "circle" },
-          size: { value: { min: 1, max: 3 } },
-        },
-        detectRetina: true,
-      }}
-    />
+      aria-hidden="true"
+    >
+      {shouldRender && !reducedMotion && (
+        <Particles
+          id="tsparticles"
+          init={particlesInit}
+          className="absolute inset-0"
+          options={options}
+        />
+      )}
+    </div>
   );
 };
 

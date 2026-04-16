@@ -1,6 +1,6 @@
 /* eslint-disable no-unused-vars */
 import '../App.css';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, memo } from 'react';
 import { Link } from 'react-router-dom';
 import { motion, AnimatePresence, useScroll, useSpring } from 'framer-motion';
 import {
@@ -298,18 +298,36 @@ export default function Landing() {
   const scaleX = useSpring(scrollYProgress, { stiffness: 100, damping: 30, restDelta: 0.001 });
 
   useEffect(() => {
-    const handleScroll = () => setShowTopBtn(window.scrollY > 500);
-    window.addEventListener("scroll", handleScroll);
-    return () => window.removeEventListener("scroll", handleScroll);
+    let rafId = null;
+    let lastVisible = false;
+    const onScroll = () => {
+      if (rafId !== null) return;
+      rafId = requestAnimationFrame(() => {
+        const next = window.scrollY > 500;
+        if (next !== lastVisible) {
+          lastVisible = next;
+          setShowTopBtn(next);
+        }
+        rafId = null;
+      });
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      if (rafId) cancelAnimationFrame(rafId);
+    };
   }, []);
 
   // --- Form Logic ---
   const [formData, setFormData] = useState({ name: '', email: '', subject: '', message: '' });
   const [loading, setLoading] = useState(false);
 
-  const handleChange = (e) => setFormData({ ...formData, [e.target.name]: e.target.value });
+  const handleChange = useCallback((e) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({ ...prev, [name]: value }));
+  }, []);
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = useCallback(async (e) => {
     e.preventDefault();
     setLoading(true);
     try {
@@ -322,24 +340,21 @@ export default function Landing() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [formData, lang]);
 
-  const scrollToSection = (e, id) => {
+  const scrollToSection = useCallback((e, id) => {
     e.preventDefault();
     const element = document.getElementById(id);
     if (element) {
-      const offset = 80; 
-      const bodyRect = document.body.getBoundingClientRect().top;
-      const elementRect = element.getBoundingClientRect().top;
-      const elementPosition = elementRect - bodyRect;
-      const offsetPosition = elementPosition - offset;
-      window.scrollTo({ top: offsetPosition, behavior: 'smooth' });
+      const offset = 80;
+      const top = element.getBoundingClientRect().top + window.scrollY - offset;
+      window.scrollTo({ top, behavior: 'smooth' });
     }
-  };
+  }, []);
 
-  const scrollToTop = () => window.scrollTo({ top: 0, behavior: 'smooth' });
+  const scrollToTop = useCallback(() => window.scrollTo({ top: 0, behavior: 'smooth' }), []);
 
-  const toggleLang = () => setLang(prev => prev === 'en' ? 'mn' : 'en');
+  const toggleLang = useCallback(() => setLang(prev => prev === 'en' ? 'mn' : 'en'), []);
 
   return (
     <div className="min-h-screen bg-[#05080d] text-slate-200 overflow-x-hidden relative font-sans scroll-smooth">
@@ -619,7 +634,7 @@ export default function Landing() {
   );
 }
 
-function TechnologySection({ t }) {
+const TechnologySection = memo(function TechnologySection({ t }) {
   const containerVariants = { hidden: { opacity: 0 }, visible: { opacity: 1, transition: { staggerChildren: 0.15 } } };
   return (
     <section id="tech" className="relative z-10 py-24 border-t border-slate-800/50">
@@ -656,9 +671,9 @@ function TechnologySection({ t }) {
       </div>
     </section>
   );
-}
+});
 
-function FeatureCard({ icon, title, desc }) {
+const FeatureCard = memo(function FeatureCard({ icon, title, desc }) {
   return (
     <motion.div whileHover={{ y: -10 }} className="group p-10 rounded-[3.5rem] bg-[#0f172a]/60 border border-white/5 hover:bg-gradient-to-br hover:from-[#151e32] hover:to-red-900/10 transition-all duration-500 overflow-hidden relative">
       <div className="w-16 h-16 rounded-[1.5rem] bg-slate-800/50 border border-white/5 flex items-center justify-center text-slate-400 group-hover:text-red-500 transition-all mb-8">{icon}</div>
@@ -666,9 +681,9 @@ function FeatureCard({ icon, title, desc }) {
       <p className="text-slate-400 font-light text-sm leading-relaxed">{desc}</p>
     </motion.div>
   );
-}
+});
 
-function ContactInfo({ icon, label, value }) {
+const ContactInfo = memo(function ContactInfo({ icon, label, value }) {
   return (
     <div className="flex items-center gap-4 group">
       <div className="w-14 h-14 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center text-red-500 group-hover:bg-red-500/10 transition-all">{icon}</div>
@@ -678,9 +693,9 @@ function ContactInfo({ icon, label, value }) {
       </div>
     </div>
   );
-}
+});
 
-function PipelineStep({ step, title, desc, icon, glow }) {
+const PipelineStep = memo(function PipelineStep({ step, title, desc, icon, glow }) {
   return (
     <div className="relative p-6 rounded-[2rem] bg-[#0f172a]/80 border border-slate-800 hover:border-slate-600 transition-colors group">
       <div className="absolute top-0 right-6 -translate-y-1/2 text-5xl font-black text-slate-800/30 group-hover:text-red-500/20">{step}</div>
@@ -692,18 +707,18 @@ function PipelineStep({ step, title, desc, icon, glow }) {
       <p className="text-sm text-slate-400 font-light">{desc}</p>
     </div>
   );
-}
+});
 
-function TechRow({ title, tech }) {
+const TechRow = memo(function TechRow({ title, tech }) {
   return (
     <div className="p-4 rounded-2xl bg-slate-900/40 border border-slate-800/50 hover:border-red-500/20 transition-all">
       <h4 className="text-sm font-bold text-slate-300 mb-1">{title}</h4>
       <p className="text-red-400/90 font-mono text-sm">{tech}</p>
     </div>
   );
-}
+});
 
-function TestimonialsSection({ t }) {
+const TestimonialsSection = memo(function TestimonialsSection({ t }) {
   return (
     <section className="py-32 border-t border-white/5 bg-slate-900/10">
       <div className="max-w-[1400px] mx-auto px-6">
@@ -746,9 +761,9 @@ function TestimonialsSection({ t }) {
       </div>
     </section>
   );
-}
+});
 
-function FAQSection({ t }) {
+const FAQSection = memo(function FAQSection({ t }) {
   const [openIdx, setOpenIdx] = useState(null);
   return (
     <section className="py-32 border-t border-white/5 bg-slate-900/10">
@@ -797,7 +812,7 @@ function FAQSection({ t }) {
       </div>
     </section>
   );
-}
+});
 
 function getCameraRate(count) {
   if (count <= 5) return 20000;
@@ -823,7 +838,7 @@ function getVisitFee(stores, location) {
   return 50000 + Math.max(0, stores - 1) * 30000;
 }
 
-function PricingCalculator({ t, lang }) {
+const PricingCalculator = memo(function PricingCalculator({ t, lang }) {
   const [cameras, setCameras] = useState(5);
   const [stores, setStores] = useState(1);
   const [location, setLocation] = useState('ub');
@@ -936,7 +951,7 @@ function PricingCalculator({ t, lang }) {
       </div>
     </motion.div>
   );
-}
+});
 
 function PricingSection({ t, lang }) {
   const s = t.sections;
