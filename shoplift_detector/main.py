@@ -555,12 +555,29 @@ if os.path.exists(dist_path):
 
     @app.get("/{catchall:path}")
     async def serve_react_app(catchall: str):
-        api_prefixes = [
-            "api", "auth", "admin", "video_feed", "static", "assets",
+        # Dotfile probes (`.git/config`, `.env`, etc.) must 404 — never fall
+        # through to the SPA shell, which would return 200 and mislead scanners.
+        if catchall.startswith(".") or "/." in catchall:
+            raise HTTPException(status_code=404)
+
+        # Only match ACTUAL API routes. A blanket `admin` prefix used to swallow
+        # React routes like `/admin/control`, so list the real legacy admin
+        # endpoints explicitly. Each entry ending in `/` is a namespace match;
+        # bare entries match only exact single-segment paths.
+        api_namespaces = (
+            "api/", "auth/", "static/", "assets/", "users/",
+            "admin/organizations", "admin/users", "admin/stats",
+            "admin/alerts", "admin/cameras",
+        )
+        api_exact = {
             "token", "health", "docs", "redoc", "openapi.json",
-            "users", "alerts", "register", "forgot-password", "verify-code", "reset-password",
-        ]
-        if any(catchall.startswith(prefix) for prefix in api_prefixes):
+            "video_feed", "alerts", "register",
+            "forgot-password", "verify-code", "reset-password",
+        }
+        if catchall in api_exact or any(
+            catchall.startswith(ns) or catchall == ns.rstrip("/")
+            for ns in api_namespaces
+        ):
             raise HTTPException(status_code=404)
         return _serve_spa_path(catchall)
 

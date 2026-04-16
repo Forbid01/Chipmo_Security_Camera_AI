@@ -7,8 +7,20 @@ from app.db.repository.stores import StoreRepository
 from app.db.session import DB
 from app.schemas.camera import CameraCreate, CameraUpdate
 from app.schemas.common import APIResponse
+from app.schemas.store import StoreCreate, StoreUpdate
 from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
+
+
+class MyStoreCreate(BaseModel):
+    """Энгийн хэрэглэгчийн дэлгүүр үүсгэх форм — organization_id-г JWT-ээс өөрөө оноодог."""
+
+    name: str
+    address: str | None = None
+    alert_threshold: float = 80.0
+    alert_cooldown: int = 15
+    telegram_chat_id: str | None = None
 
 router = APIRouter()
 
@@ -46,6 +58,52 @@ async def my_stores(user: CurrentUser, db: DB):
     if user.get("role") == "super_admin":
         return await store_repo.get_all()
     return await store_repo.get_by_organization(org_id)
+
+
+@router.post("/stores", response_model=APIResponse)
+async def create_my_store(data: MyStoreCreate, user: CurrentUser, db: DB):
+    """Хэрэглэгч өөрийн байгууллагад дэлгүүр нэмэх. org_id-г JWT-ээс оноодог."""
+    org_id = user.get("org_id")
+    if not org_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Байгууллагад харьяалагдаагүй байна. Эхлээд байгууллага бүртгүүлнэ үү.",
+        )
+
+    store_repo = StoreRepository(db)
+    store_id = await store_repo.create(
+        StoreCreate(
+            name=data.name,
+            address=data.address,
+            organization_id=org_id,
+            alert_threshold=data.alert_threshold,
+            alert_cooldown=data.alert_cooldown,
+            telegram_chat_id=data.telegram_chat_id,
+        )
+    )
+    return APIResponse(message="Дэлгүүр амжилттай нэмэгдлээ", data={"store_id": store_id})
+
+
+@router.put("/stores/{store_id}", response_model=APIResponse)
+async def update_my_store(store_id: int, data: StoreUpdate, user: CurrentUser, db: DB):
+    """Хэрэглэгч өөрийн байгууллагын дэлгүүрийг засах."""
+    await _verify_store_ownership(store_id, user, db)
+    store_repo = StoreRepository(db)
+    success = await store_repo.update(store_id, data)
+    if not success:
+        raise HTTPException(status_code=404, detail="Дэлгүүр олдсонгүй")
+    return APIResponse(message="Дэлгүүр шинэчлэгдлээ")
+
+
+@router.delete("/stores/{store_id}", response_model=APIResponse)
+async def delete_my_store(store_id: int, user: CurrentUser, db: DB):
+    """Хэрэглэгч өөрийн байгууллагын дэлгүүрийг устгах."""
+    await _verify_store_ownership(store_id, user, db)
+    store_repo = StoreRepository(db)
+    success = await store_repo.delete(store_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Дэлгүүр олдсонгүй")
+    return APIResponse(message="Дэлгүүр устгагдлаа")
 
 
 @router.post("", response_model=APIResponse)

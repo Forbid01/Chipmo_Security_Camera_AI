@@ -1,0 +1,37 @@
+# VCS
+.git
+.gitignore
+.github
+
+# Python
+.venv
+venv
+__pycache__
+*.pyc
+*.pyo
+.pytest_cache
+.ruff_cache
+.mypy_cache
+
+# Node
+node_modules
+security-web/node_modules
+security-web/dist
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+
+# IDE
+.vscode
+.idea
+*.swp
+
+# Local artifacts
+alerts/
+faces/
+*.log
+test.db
+.claude
+.DS_Store

@@ -119,17 +119,19 @@ export const getStores = async (organizationId = null) => {
 };
 
 export const createStore = async (storeData) => {
-  const response = await api.post("/api/v1/stores", storeData);
+  // Regular org users hit the self-scoped endpoint; it auto-assigns org_id
+  // from the JWT. The super_admin-only /api/v1/stores is for global mgmt.
+  const response = await api.post("/api/v1/my/cameras/stores", storeData);
   return response.data;
 };
 
 export const updateStore = async (id, data) => {
-  const response = await api.put(`/api/v1/stores/${id}`, data);
+  const response = await api.put(`/api/v1/my/cameras/stores/${id}`, data);
   return response.data;
 };
 
 export const deleteStore = async (id) => {
-  const response = await api.delete(`/api/v1/stores/${id}`);
+  const response = await api.delete(`/api/v1/my/cameras/stores/${id}`);
   return response.data;
 };
 
