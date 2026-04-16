@@ -589,9 +589,11 @@ const DashboardAdmin = () => {
           <div className="flex items-center gap-4">
             <button
               onClick={() => navigate('/dashboard')}
-              className="p-2.5 rounded-xl border border-slate-800 hover:bg-slate-800/50 transition-all"
+              title="Хэрэглэгчийн хэсэг рүү буцах"
+              className="px-4 py-2.5 rounded-xl border border-slate-700/60 hover:border-blue-500/50 bg-slate-900/40 hover:bg-blue-500/10 text-slate-300 hover:text-blue-400 transition-all flex items-center gap-2 text-xs font-bold uppercase tracking-wider"
             >
-              <ArrowLeft size={18} />
+              <ArrowLeft size={16} />
+              <span className="hidden sm:inline">Dashboard</span>
             </button>
             <div>
               <h1 className="text-3xl md:text-4xl font-black italic tracking-tighter text-white uppercase flex items-center gap-3">

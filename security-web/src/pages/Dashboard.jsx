@@ -329,6 +329,16 @@ function Dashboard() {
               <span className="text-sm">{item.label}</span>
             </button>
           ))}
+
+          {userInfo.role === 'super_admin' && (
+            <button
+              onClick={() => { navigate('/admin/control'); setSidebarOpen(false); }}
+              className="w-full flex items-center gap-4 px-4 py-3 rounded-xl text-red-400 border border-red-500/20 bg-red-500/5 hover:bg-red-500/10 hover:border-red-500/40 transition-all font-bold"
+            >
+              <ShieldCheck size={18} />
+              <span className="text-sm">Админ Панел</span>
+            </button>
+          )}
         </div>
       </nav>
 
