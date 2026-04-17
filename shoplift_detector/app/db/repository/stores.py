@@ -13,16 +13,25 @@ class StoreRepository:
         self.db = db
 
     async def create(self, data: StoreCreate) -> int | None:
-        query = text("""
-            INSERT INTO stores (name, address, organization_id, alert_threshold, alert_cooldown, telegram_chat_id)
-            VALUES (:name, :address, :org_id, :threshold, :cooldown, :telegram_chat_id)
-            RETURNING id
-        """)
-        result = await self.db.execute(query, {
+        columns = ["name", "address", "organization_id", "alert_threshold", "alert_cooldown"]
+        params = {
             "name": data.name, "address": data.address,
             "org_id": data.organization_id, "threshold": data.alert_threshold,
-            "cooldown": data.alert_cooldown, "telegram_chat_id": data.telegram_chat_id,
-        })
+            "cooldown": data.alert_cooldown,
+        }
+        placeholders = [":name", ":address", ":org_id", ":threshold", ":cooldown"]
+
+        if data.telegram_chat_id is not None:
+            columns.append("telegram_chat_id")
+            placeholders.append(":telegram_chat_id")
+            params["telegram_chat_id"] = data.telegram_chat_id
+
+        query = text(f"""
+            INSERT INTO stores ({', '.join(columns)})
+            VALUES ({', '.join(placeholders)})
+            RETURNING id
+        """)
+        result = await self.db.execute(query, params)
         await self.db.commit()
         row = result.fetchone()
         return row[0] if row else None
