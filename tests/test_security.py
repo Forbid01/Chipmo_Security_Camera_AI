@@ -15,7 +15,7 @@ if SHOPLIFT_DIR not in sys.path:
 
 os.environ.setdefault("SECRET_KEY", "test-secret-key-for-pytest-only-do-not-use-in-prod")
 
-from shoplift_detector.app.core.security import (
+from shoplift_detector.app.core.security import (  # noqa: E402
     ALGORITHM,
     SECRET_KEY,
     _decode_token,

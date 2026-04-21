@@ -3,11 +3,11 @@ import re
 from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
+import bcrypt
 import jwt
 from app.core.config import settings
 from fastapi import Depends, HTTPException, Request, Response, status
 from fastapi.security import OAuth2PasswordBearer
-from passlib.context import CryptContext
 
 logger = logging.getLogger(__name__)
 
@@ -37,17 +37,26 @@ def validate_password_strength(password: str) -> None:
 
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/token", auto_error=False)
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+
+def _bcrypt_secret(password: str) -> bytes:
+    # bcrypt only uses the first 72 bytes. Truncate explicitly so local
+    # bcrypt>=5 and older production bcrypt behave the same way.
+    return password.encode("utf-8")[:72]
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    return pwd_context.verify(plain_password, hashed_password)
+    try:
+        return bcrypt.checkpw(
+            _bcrypt_secret(plain_password),
+            hashed_password.encode("utf-8"),
+        )
+    except (TypeError, ValueError):
+        return False
 
 
 def get_password_hash(password: str) -> str:
-    if len(password.encode('utf-8')) > 72:
-        password = password[:72]
-    return pwd_context.hash(password)
+    return bcrypt.hashpw(_bcrypt_secret(password), bcrypt.gensalt()).decode("utf-8")
 
 
 def create_access_token(data: dict, expires_delta: timedelta | None = None) -> str:

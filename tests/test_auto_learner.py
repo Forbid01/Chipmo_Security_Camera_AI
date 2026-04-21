@@ -13,7 +13,7 @@ if SHOPLIFT_DIR not in sys.path:
 
 os.environ.setdefault("SECRET_KEY", "test-secret-key-for-pytest-only-do-not-use-in-prod")
 
-from shoplift_detector.app.services.auto_learner import DEFAULT_WEIGHTS, AutoLearner
+from shoplift_detector.app.services.auto_learner import DEFAULT_WEIGHTS, AutoLearner  # noqa: E402
 
 
 @pytest.fixture
@@ -35,8 +35,6 @@ class TestThresholdCalculation:
         tp = [90.0, 95.0, 100.0]
         fp = [50.0, 55.0, 60.0]
         threshold = learner._calculate_optimal_threshold(tp, fp)
-        avg_tp = sum(tp) / len(tp)  # 95
-        avg_fp = sum(fp) / len(fp)  # 55
         # Expected: 55 * 0.4 + 95 * 0.6 = 22 + 57 = 79.0
         assert 40.0 <= threshold <= 150.0
         assert threshold == pytest.approx(79.0, abs=0.5)
@@ -47,7 +45,6 @@ class TestThresholdCalculation:
         tp = [40.0, 45.0]
         fp = [80.0, 90.0]
         threshold = learner._calculate_optimal_threshold(tp, fp)
-        avg_fp = sum(fp) / len(fp)  # 85
         # max(avg_tp, avg_fp) * 1.1 = 85 * 1.1 = 93.5
         assert threshold == pytest.approx(93.5, abs=0.5)
 

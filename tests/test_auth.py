@@ -3,6 +3,9 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from app.db.session import get_db
+
+from shoplift_detector.main import app
 
 # ---------------------------------------------------------------------------
 # Registration tests
@@ -18,17 +21,15 @@ class TestRegistration:
         mock_repo.get_by_email = AsyncMock(return_value=None)
         mock_repo.create = AsyncMock(return_value=42)
 
-        # FastAPI-ийн dependency injection-ийг патчлах нь хамгийн найдвартай арга
-        with patch("shoplift_detector.main.get_db") as mock_get_db:
-            mock_get_db.return_value.__anext__.return_value = AsyncMock()
+        app.dependency_overrides[get_db] = lambda: MagicMock()
+        with patch("app.api.v1.auth.UserRepository", return_value=mock_repo):
+            resp = await client.post("/api/v1/auth/register", json=test_user_data)
 
-            # UserRepository патчлахдаа main.py эсвэл routers/auth.py-г ашигла
-            with patch("shoplift_detector.main.UserRepository", return_value=mock_repo):
-                resp = await client.post("/register", json=test_user_data)
+        app.dependency_overrides.clear()
 
         assert resp.status_code == 200
         body = resp.json()
-        assert "user_id" in body or "message" in body
+        assert body["data"]["user_id"] == 42
 
     @pytest.mark.auth
     async def test_register_duplicate_username(self, client, test_user_data, test_user_db_row):
@@ -36,17 +37,11 @@ class TestRegistration:
         mock_repo = AsyncMock()
         mock_repo.get_by_identifier = AsyncMock(return_value=test_user_db_row)
 
-        with patch(
-            "shoplift_detector.app.db.session.AsyncSessionLocal",
-            return_value=AsyncMock(
-                __aenter__=AsyncMock(return_value=MagicMock()),
-                __aexit__=AsyncMock(return_value=False),
-            ),
-        ), patch(
-            "shoplift_detector.app.repositories.user.UserRepository",
-            return_value=mock_repo,
-        ):
-            resp = await client.post("/register", json=test_user_data)
+        app.dependency_overrides[get_db] = lambda: MagicMock()
+        with patch("app.api.v1.auth.UserRepository", return_value=mock_repo):
+            resp = await client.post("/api/v1/auth/register", json=test_user_data)
+
+        app.dependency_overrides.clear()
 
         assert resp.status_code == 400
         assert "бүртгэлтэй" in resp.json()["detail"]
@@ -77,20 +72,14 @@ class TestLogin:
         mock_repo = AsyncMock()
         mock_repo.get_by_identifier = AsyncMock(return_value=test_user_db_row)
 
-        with patch(
-            "shoplift_detector.app.db.session.AsyncSessionLocal",
-            return_value=AsyncMock(
-                __aenter__=AsyncMock(return_value=MagicMock()),
-                __aexit__=AsyncMock(return_value=False),
-            ),
-        ), patch(
-            "shoplift_detector.main.UserRepository",
-            return_value=mock_repo,
-        ):
+        app.dependency_overrides[get_db] = lambda: MagicMock()
+        with patch("app.api.v1.auth.UserRepository", return_value=mock_repo):
             resp = await client.post(
-                "/token",
+                "/api/v1/auth/token",
                 data={"username": "testuser", "password": "StrongP@ss1!"},
             )
+
+        app.dependency_overrides.clear()
 
         assert resp.status_code == 200
         body = resp.json()
@@ -103,20 +92,14 @@ class TestLogin:
         mock_repo = AsyncMock()
         mock_repo.get_by_identifier = AsyncMock(return_value=test_user_db_row)
 
-        with patch(
-            "shoplift_detector.app.db.session.AsyncSessionLocal",
-            return_value=AsyncMock(
-                __aenter__=AsyncMock(return_value=MagicMock()),
-                __aexit__=AsyncMock(return_value=False),
-            ),
-        ), patch(
-            "shoplift_detector.app.repositories.user.UserRepository",
-            return_value=mock_repo,
-        ):
+        app.dependency_overrides[get_db] = lambda: MagicMock()
+        with patch("app.api.v1.auth.UserRepository", return_value=mock_repo):
             resp = await client.post(
-                "/token",
+                "/api/v1/auth/token",
                 data={"username": "testuser", "password": "WrongPass1!"},
             )
+
+        app.dependency_overrides.clear()
 
         assert resp.status_code == 401
 
@@ -134,17 +117,11 @@ class TestUsersMe:
         mock_repo = AsyncMock()
         mock_repo.get_by_identifier = AsyncMock(return_value=test_user_db_row)
 
-        with patch(
-            "shoplift_detector.app.db.session.AsyncSessionLocal",
-            return_value=AsyncMock(
-                __aenter__=AsyncMock(return_value=MagicMock()),
-                __aexit__=AsyncMock(return_value=False),
-            ),
-        ), patch(
-            "shoplift_detector.app.repositories.user.UserRepository",
-            return_value=mock_repo,
-        ):
-            resp = await client.get("/users/me", headers=auth_headers)
+        app.dependency_overrides[get_db] = lambda: MagicMock()
+        with patch("app.api.v1.auth.UserRepository", return_value=mock_repo):
+            resp = await client.get("/api/v1/auth/me", headers=auth_headers)
+
+        app.dependency_overrides.clear()
 
         assert resp.status_code == 200
         body = resp.json()
@@ -155,5 +132,5 @@ class TestUsersMe:
     @pytest.mark.auth
     async def test_users_me_no_token(self, client):
         """Request without auth token returns 401."""
-        resp = await client.get("/users/me")
+        resp = await client.get("/api/v1/auth/me")
         assert resp.status_code == 401

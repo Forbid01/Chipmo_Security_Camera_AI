@@ -9,19 +9,22 @@ auto-learning) хөгжүүлэх төлөвлөгөөг агуулсан.
 
 | № | Файл | Агуулга |
 |---|---|---|
+| 00 | [AS-IS-INVENTORY.md](./00-AS-IS-INVENTORY.md) | Одоогийн repo-ийн endpoint, table, service, env, deploy inventory |
 | 01 | [ARCHITECTURE.md](./01-ARCHITECTURE.md) | Одоогийн болон эцсийн архитектурын харьцуулалт |
 | 02 | [ROADMAP.md](./02-ROADMAP.md) | 4 үе шаттай хөгжүүлэлтийн roadmap |
 | 03 | [TECH-SPECS.md](./03-TECH-SPECS.md) | Шинэ feature бүрийн техникийн нарийвчилсан тодорхойлолт |
 | 04 | [EDGE-DEPLOYMENT.md](./04-EDGE-DEPLOYMENT.md) | Edge box архитектур, hardware BOM, суулгалт |
 | 05 | [MIGRATION-PLAN.md](./05-MIGRATION-PLAN.md) | Centralized → Hybrid edge-д шилжих алхам-алхмын план |
 | 06 | [DATABASE-SCHEMA.md](./06-DATABASE-SCHEMA.md) | DB schema-ийн өөрчлөлт, шинэ хүснэгтүүд |
+| 07 | [SCHEMA-MIGRATION-LOCK.md](./07-SCHEMA-MIGRATION-LOCK.md) | Current integer schema → future schema backward-compatible lock |
 
 ## Уншлагын дараалал
 
 **Шинэ гишүүн код хийж эхэлж байгаа бол:**
-1. `01-ARCHITECTURE.md` — системийн ерөнхий бүтэц
-2. `02-ROADMAP.md` — яг одоо юу хийж байгаа
-3. `03-TECH-SPECS.md` — өөрийн хариуцсан хэсэгтэй холбоотой section
+1. `00-AS-IS-INVENTORY.md` — одоогийн бодит repo state
+2. `01-ARCHITECTURE.md` — системийн ерөнхий бүтэц
+3. `02-ROADMAP.md` — яг одоо юу хийж байгаа
+4. `03-TECH-SPECS.md` — өөрийн хариуцсан хэсэгтэй холбоотой section
 
 **DevOps / Infrastructure engineer:**
 1. `04-EDGE-DEPLOYMENT.md`

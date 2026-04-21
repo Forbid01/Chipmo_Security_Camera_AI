@@ -8,12 +8,23 @@ import queue
 import subprocess
 import time
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 
 import cv2
-import torch
-from ultralytics import YOLO
+
+try:
+    import torch
+    from ultralytics import YOLO
+except ImportError as exc:
+    torch = None
+    YOLO = None
+    _AI_IMPORT_ERROR = exc
+else:
+    _AI_IMPORT_ERROR = None
 
 logger = logging.getLogger(__name__)
+
+BYTE_TRACK_CONFIG_PATH = Path(__file__).resolve().parents[2] / "config" / "bytetrack.yaml"
 
 try:
     from app.core.config import ALERTS_DIR
@@ -38,6 +49,12 @@ DEFAULT_WEIGHTS = {
 
 class ShopliftDetector:
     def __init__(self, device_type: str):
+        if torch is None or YOLO is None:
+            raise RuntimeError(
+                "AI dependencies are not installed. Install torch and ultralytics "
+                "to run camera inference."
+            ) from _AI_IMPORT_ERROR
+
         self.device = device_type
         self.executor = ThreadPoolExecutor(max_workers=4)
 
@@ -64,7 +81,6 @@ class ShopliftDetector:
                 torch.set_num_interop_threads(2)
 
         self.tracker_history: dict = {}
-        self.last_alert_time: dict = {}
         self.frame_count = 0
         self._cached_expensive_items: list = []
 
@@ -77,6 +93,12 @@ class ShopliftDetector:
         """Дэлгүүрт тохирсон threshold авах (auto-learned)."""
         config = auto_learner.get_store_config(store_id)
         return config.get("threshold", default)
+
+    @staticmethod
+    def _get_tracker_config_path() -> str:
+        if not BYTE_TRACK_CONFIG_PATH.exists():
+            raise FileNotFoundError(f"ByteTrack config not found: {BYTE_TRACK_CONFIG_PATH}")
+        return str(BYTE_TRACK_CONFIG_PATH)
 
     def _optimize_video(self, video_path: str):
         temp_path = video_path.replace(".mp4", "_temp.mp4")
@@ -94,12 +116,33 @@ class ShopliftDetector:
 
     def _async_save_alert(self, yolo_id, frame_to_save, name: str, reason: str,
                           bbox: list, camera_id: int = None, store_id: int = None,
-                          score: float = None):
+                          score: float = None, cooldown_seconds: int = 60):
         try:
             from app.services.storage import get_storage
 
             current_time = int(time.time())
             filename = f"alert_{yolo_id}_{current_time}.jpg"
+
+            import asyncio
+            loop = asyncio.new_event_loop()
+            try:
+                decision = loop.run_until_complete(
+                    self._should_send_alert(
+                        person_id=int(yolo_id),
+                        camera_id=camera_id,
+                        cooldown_seconds=cooldown_seconds,
+                    )
+                )
+                if not decision.should_alert:
+                    logger.info(
+                        "Alert suppressed for camera_id=%s person_track_id=%s: %s",
+                        camera_id,
+                        yolo_id,
+                        decision.reason,
+                    )
+                    return
+            finally:
+                loop.close()
 
             try:
                 image_url = get_storage().save_image(frame_to_save, filename=filename)
@@ -109,14 +152,34 @@ class ShopliftDetector:
                 cv2.imwrite(fallback, frame_to_save)
                 image_url = fallback
 
-            import asyncio
             loop = asyncio.new_event_loop()
             try:
-                loop.run_until_complete(
+                alert_id = loop.run_until_complete(
                     self._save_alert_to_db(
                         person_id=int(yolo_id), image_path=image_url,
                         reason=reason, camera_id=camera_id, store_id=store_id,
                         score=score,
+                    )
+                )
+            finally:
+                loop.close()
+
+            if alert_id is None:
+                logger.info(
+                    "Alert insert suppressed for camera_id=%s person_track_id=%s",
+                    camera_id,
+                    yolo_id,
+                )
+                return
+
+            loop = asyncio.new_event_loop()
+            try:
+                loop.run_until_complete(
+                    self._record_alert_committed(
+                        person_id=int(yolo_id),
+                        camera_id=camera_id,
+                        alert_id=alert_id,
+                        cooldown_seconds=cooldown_seconds,
                     )
                 )
             finally:
@@ -182,9 +245,44 @@ class ShopliftDetector:
 
         async with AsyncSessionLocal() as db:
             repo = AlertRepository(db)
-            await repo.insert_alert(
+            return await repo.insert_alert(
                 person_id=person_id, image_path=image_path, reason=reason,
                 camera_id=camera_id, store_id=store_id, confidence_score=score,
+            )
+
+    async def _should_send_alert(self, person_id, camera_id=None, cooldown_seconds=60):
+        from app.db.session import AsyncSessionLocal
+        from app.services.alert_manager import alert_manager
+
+        async with AsyncSessionLocal() as db:
+            return await alert_manager.should_send_alert(
+                db,
+                camera_id=camera_id,
+                person_track_id=person_id,
+                cooldown_seconds=cooldown_seconds,
+            )
+
+    async def _record_alert_committed(
+        self,
+        person_id,
+        alert_id,
+        camera_id=None,
+        cooldown_seconds=60,
+    ):
+        from datetime import UTC, datetime, timedelta
+
+        from app.db.session import AsyncSessionLocal
+        from app.services.alert_manager import alert_manager
+
+        now = datetime.now(UTC)
+        async with AsyncSessionLocal() as db:
+            await alert_manager.record_alert_committed(
+                db,
+                camera_id=camera_id,
+                person_track_id=person_id,
+                alert_id=alert_id,
+                now=now,
+                cooldown_until=now + timedelta(seconds=max(0, int(cooldown_seconds or 0))),
             )
 
     @staticmethod
@@ -198,7 +296,6 @@ class ShopliftDetector:
         ]
         for tid in stale_ids:
             del self.tracker_history[tid]
-            self.last_alert_time.pop(tid, None)
 
     def _analyze_behavior(self, curr: dict, kps, person_h: float,
                           expensive_items: list, weights: dict):
@@ -316,7 +413,6 @@ class ShopliftDetector:
                 continue
 
             display_frame = full_frame.copy()
-            current_time  = time.time()
             self.frame_count += 1
 
             sh, sw = frame.shape[:2]
@@ -337,6 +433,7 @@ class ShopliftDetector:
                 pose_results = self.pose_model.track(
                     frame, persist=True, device=self.device,
                     verbose=False, imgsz=320, half=self.half,
+                    tracker=self._get_tracker_config_path(),
                 )
 
                 if self.frame_count % 3 == 0:
@@ -396,20 +493,17 @@ class ShopliftDetector:
                         curr["last_reasons"] = reasons
 
                     if curr["score"] >= effective_threshold:
-                        last_alert = self.last_alert_time.get(yolo_id, 0)
-                        if current_time - last_alert > cooldown:
-                            reason_str = " | ".join(curr["last_reasons"])
-                            self.executor.submit(
-                                self._async_save_alert,
-                                yolo_id, display_frame.copy(),
-                                "Unknown", f"🚨 {reason_str}", [x1, y1, x2, y2],
-                                camera_id, store_id, curr["score"],
-                            )
-                            self.last_alert_time[yolo_id] = current_time
-                            curr["score"] = 0.0
-                            curr["holding"] = None
-                            curr["concealment_frames"] = 0
-                            curr["last_reasons"] = []
+                        reason_str = " | ".join(curr["last_reasons"])
+                        self.executor.submit(
+                            self._async_save_alert,
+                            yolo_id, display_frame.copy(),
+                            "Unknown", f"🚨 {reason_str}", [x1, y1, x2, y2],
+                            camera_id, store_id, curr["score"], cooldown,
+                        )
+                        curr["score"] = 0.0
+                        curr["holding"] = None
+                        curr["concealment_frames"] = 0
+                        curr["last_reasons"] = []
 
                     if curr["score"] < 25:
                         border_color, status_text = (0, 255, 0), "NORMAL"
@@ -452,6 +546,14 @@ class ShopliftDetector:
 
 
 def ai_inference():
+    if torch is None:
+        logger.warning(
+            "AI inference disabled because torch/ultralytics dependencies "
+            "are not installed",
+            exc_info=_AI_IMPORT_ERROR,
+        )
+        return
+
     device = (
         "mps" if torch.backends.mps.is_available()
         else "cuda" if torch.cuda.is_available()

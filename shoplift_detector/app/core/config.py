@@ -64,6 +64,17 @@ class Settings(BaseSettings):
     RTSP_RECONNECT_BASE: float = 1.0
     RTSP_RECONNECT_MAX: float = 60.0
 
+    # Camera health heartbeat/offline tracking
+    CAMERA_HEALTH_HEARTBEAT_INTERVAL_SECONDS: float = 5.0
+    CAMERA_HEALTH_OFFLINE_AFTER_SECONDS: float = 30.0
+    CAMERA_HEALTH_NOTIFICATION_AFTER_SECONDS: float = 300.0
+
+    # Local media retention. Labeled alert media is kept indefinitely.
+    MEDIA_RETENTION_ENABLED: bool = True
+    MEDIA_RETENTION_INTERVAL_SECONDS: float = 86400.0
+    NORMAL_CLIP_RETENTION_HOURS: float = 48.0
+    ALERT_CLIP_RETENTION_DAYS: float = 30.0
+
     # Storage backend: local | cloudinary | s3
     STORAGE_BACKEND: str = "local"
     PUBLIC_BASE_URL: str = ""

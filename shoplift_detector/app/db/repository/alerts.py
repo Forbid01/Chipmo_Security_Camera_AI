@@ -1,11 +1,17 @@
 import logging
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
+
+
+def _seconds_since(event_time: datetime) -> float:
+    if event_time.tzinfo is None:
+        event_time = event_time.replace(tzinfo=UTC)
+    return (datetime.now(UTC) - event_time).total_seconds()
 
 
 class AlertRepository:
@@ -113,16 +119,24 @@ class AlertRepository:
         confidence_score: float = None,
         video_path: str = None,
     ) -> int | None:
-        check = text("""
+        alerts_columns = await self._get_table_columns("alerts")
+        duplicate_conditions = ["person_id = :pid"]
+        params: dict[str, Any] = {"pid": person_id}
+        if camera_id is not None and "camera_id" in alerts_columns:
+            duplicate_conditions.append("camera_id = :cam_id")
+            params["cam_id"] = camera_id
+
+        check = text(f"""
             SELECT event_time FROM alerts
-            WHERE person_id = :pid ORDER BY event_time DESC LIMIT 1
+            WHERE {" AND ".join(duplicate_conditions)}
+            ORDER BY event_time DESC
+            LIMIT 1
         """)
-        result = await self.db.execute(check, {"pid": person_id})
+        result = await self.db.execute(check, params)
         last = result.fetchone()
-        if last and (datetime.now() - last[0]).total_seconds() < 10:
+        if last and _seconds_since(last[0]) < 10:
             return None
 
-        alerts_columns = await self._get_table_columns("alerts")
         column_values = [
             ("person_id", person_id, "pid"),
             ("image_path", image_path, "img"),

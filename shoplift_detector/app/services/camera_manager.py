@@ -1,6 +1,7 @@
 """Dynamic camera manager - олон дэлгүүр, олон камерыг удирдах.
 Runtime-д камер нэмэх/хасах боломжтой, restart шаарддаггүй."""
 
+import asyncio
 import contextlib
 import logging
 import os
@@ -9,12 +10,14 @@ import threading
 import time
 from collections import deque
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 
 import cv2
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
+
+MAX_RTSP_RECONNECT_SECONDS = 60.0
 
 
 def _resolve_source(url: str, camera_type: str):
@@ -68,6 +71,10 @@ class CameraState:
     is_connected: bool = False
     fps: float = 0.0
     last_frame_at: datetime | None = None
+    last_error: str | None = None
+    offline_since_monotonic: float | None = None
+    last_health_report_monotonic: float = 0.0
+    last_offline_notification_monotonic: float = 0.0
     _stop_event: threading.Event = field(default_factory=threading.Event)
 
     @property
@@ -131,6 +138,18 @@ class CameraManager:
         cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
         return cap
 
+    @staticmethod
+    def _reconnect_base_backoff() -> float:
+        return max(0.1, float(settings.RTSP_RECONNECT_BASE))
+
+    @staticmethod
+    def _reconnect_max_backoff() -> float:
+        return min(float(settings.RTSP_RECONNECT_MAX), MAX_RTSP_RECONNECT_SECONDS)
+
+    @staticmethod
+    def _next_reconnect_backoff(current: float, max_backoff: float) -> float:
+        return min(current * 2, max_backoff, MAX_RTSP_RECONNECT_SECONDS)
+
     def _enqueue_ai_frame(self, payload: dict):
         """Bounded queue with drop-oldest semantics — newest frames win
         so the AI worker never processes stale data during bursts."""
@@ -142,6 +161,113 @@ class CameraManager:
             with contextlib.suppress(queue.Full):
                 self.ai_input_queue.put_nowait(payload)
 
+    def _mark_online(self, state: CameraState):
+        state.is_connected = True
+        state.last_error = None
+        state.offline_since_monotonic = None
+
+    def _mark_offline(self, state: CameraState, error: str | None = None):
+        state.is_connected = False
+        state.last_error = error
+        if state.offline_since_monotonic is None:
+            state.offline_since_monotonic = time.monotonic()
+
+    def _should_report_health(self, state: CameraState, *, force: bool = False) -> bool:
+        if force:
+            return True
+        elapsed = time.monotonic() - state.last_health_report_monotonic
+        return elapsed >= settings.CAMERA_HEALTH_HEARTBEAT_INTERVAL_SECONDS
+
+    def _report_camera_health(self, state: CameraState, *, force: bool = False):
+        if not self._should_report_health(state, force=force):
+            return
+
+        state.last_health_report_monotonic = time.monotonic()
+        status = self._get_health_status(state)
+
+        async def _write_health():
+            from app.db.repository.camera_health import CameraHealthRepository
+            from app.db.session import AsyncSessionLocal
+
+            async with AsyncSessionLocal() as db:
+                repo = CameraHealthRepository(db)
+                await repo.upsert_heartbeat(
+                    camera_id=state.camera_id,
+                    store_id=state.store_id,
+                    status=status,
+                    is_connected=state.is_connected,
+                    fps=state.fps,
+                    last_frame_at=state.last_frame_at,
+                    last_error=state.last_error,
+                    now=datetime.now(UTC),
+                )
+
+        try:
+            loop = asyncio.new_event_loop()
+            try:
+                loop.run_until_complete(_write_health())
+            finally:
+                loop.close()
+        except Exception as exc:
+            logger.warning(
+                "[%s] Camera health heartbeat failed: %s",
+                state.name,
+                exc,
+            )
+
+    def _maybe_notify_offline(self, state: CameraState):
+        if self._get_health_status(state) != "offline" or state.offline_since_monotonic is None:
+            return
+
+        now = time.monotonic()
+        offline_for = now - state.offline_since_monotonic
+        notify_after = settings.CAMERA_HEALTH_NOTIFICATION_AFTER_SECONDS
+        if offline_for < notify_after:
+            return
+
+        if now - state.last_offline_notification_monotonic < notify_after:
+            return
+
+        state.last_offline_notification_monotonic = now
+        logger.warning(
+            "[%s] Camera offline for %.0fs; notification hook triggered",
+            state.name,
+            offline_for,
+        )
+
+        async def _mark_notification():
+            from app.db.repository.camera_health import CameraHealthRepository
+            from app.db.session import AsyncSessionLocal
+
+            async with AsyncSessionLocal() as db:
+                await CameraHealthRepository(db).mark_notification_sent(
+                    camera_id=state.camera_id,
+                    notified_at=datetime.now(UTC),
+                )
+
+        try:
+            loop = asyncio.new_event_loop()
+            try:
+                loop.run_until_complete(_mark_notification())
+            finally:
+                loop.close()
+        except Exception as exc:
+            logger.warning(
+                "[%s] Camera offline notification marker failed: %s",
+                state.name,
+                exc,
+            )
+
+    def _get_health_status(self, state: CameraState) -> str:
+        if state.is_connected:
+            return "online"
+        if state.offline_since_monotonic is None:
+            return "offline"
+        offline_for = time.monotonic() - state.offline_since_monotonic
+        if offline_for < settings.CAMERA_HEALTH_OFFLINE_AFTER_SECONDS:
+            return "degraded"
+        return "offline"
+
     def _capture_loop(self, state: CameraState):
         source = _resolve_source(state.url, state.camera_type)
         if source is None:
@@ -149,51 +275,61 @@ class CameraManager:
                 f"[{state.name}] No usable video source on this host — "
                 f"camera will stay offline"
             )
-            state.is_connected = False
+            self._mark_offline(state, "no_usable_video_source")
+            self._report_camera_health(state, force=True)
             return
 
         logger.info(f"[{state.name}] Connecting to {source}")
         cap = self._open_capture(state, source)
-        backoff = settings.RTSP_RECONNECT_BASE
-        max_backoff = settings.RTSP_RECONNECT_MAX
+        backoff = self._reconnect_base_backoff()
+        max_backoff = self._reconnect_max_backoff()
         skip_n = max(1, settings.AI_FRAME_SKIP)
         target = max(64, settings.AI_INPUT_SIZE)
 
         frame_count = 0
         ai_counter = 0
         fps_start = time.time()
-        state.is_connected = cap.isOpened()
+        if cap.isOpened():
+            self._mark_online(state)
+        else:
+            self._mark_offline(state, "capture_open_failed")
         if state.is_connected:
             logger.info(f"[{state.name}] Connected successfully")
+        self._report_camera_health(state, force=True)
 
         try:
             while not state._stop_event.is_set():
                 if not state.is_connected:
+                    self._report_camera_health(state)
+                    self._maybe_notify_offline(state)
                     logger.warning(
                         f"[{state.name}] Reconnecting in {backoff:.1f}s"
                     )
                     if state._stop_event.wait(backoff):
                         break
-                    backoff = min(backoff * 2, max_backoff)
+                    backoff = self._next_reconnect_backoff(backoff, max_backoff)
                     cap.release()
                     cap = self._open_capture(state, source)
                     if cap.isOpened():
-                        state.is_connected = True
-                        backoff = settings.RTSP_RECONNECT_BASE
+                        self._mark_online(state)
+                        backoff = self._reconnect_base_backoff()
                         logger.info(f"[{state.name}] Reconnected")
+                        self._report_camera_health(state, force=True)
                     continue
 
                 success, frame = cap.read()
                 if not success:
-                    state.is_connected = False
+                    self._mark_offline(state, "frame_read_failed")
+                    self._report_camera_health(state)
                     continue
 
+                self._mark_online(state)
                 # deque(maxlen=1).append() drops any unconsumed prior frame,
                 # so memory stays bounded even if readers fall behind.
                 state.frame_buffer.append(frame)
                 with state.frame_condition:
                     state.frame_condition.notify_all()
-                state.last_frame_at = datetime.now()
+                state.last_frame_at = datetime.now(UTC)
                 frame_count += 1
 
                 elapsed = time.time() - fps_start
@@ -201,6 +337,8 @@ class CameraManager:
                     state.fps = round(frame_count / elapsed, 1)
                     frame_count = 0
                     fps_start = time.time()
+
+                self._report_camera_health(state)
 
                 ai_counter += 1
                 if state.is_ai_enabled and ai_counter % skip_n == 0:
@@ -224,9 +362,12 @@ class CameraManager:
                 time.sleep(0.01)
         except Exception as e:
             logger.error(f"[{state.name}] Error: {e}")
+            self._mark_offline(state, str(e))
+            self._report_camera_health(state, force=True)
         finally:
             cap.release()
-            state.is_connected = False
+            self._mark_offline(state, "capture_loop_stopped")
+            self._report_camera_health(state, force=True)
 
     def get_frame(self, camera_id: int) -> object | None:
         state = self._cameras.get(camera_id)
@@ -288,8 +429,10 @@ class CameraManager:
                     "name": state.name,
                     "store_id": state.store_id,
                     "is_connected": state.is_connected,
+                    "health_status": self._get_health_status(state),
                     "fps": state.fps,
                     "last_frame_at": state.last_frame_at.isoformat() if state.last_frame_at else None,
+                    "last_error": state.last_error,
                     "is_ai_enabled": state.is_ai_enabled,
                 })
         return statuses

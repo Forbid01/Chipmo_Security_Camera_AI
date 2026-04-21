@@ -614,6 +614,7 @@ const LiveStream = React.memo(function LiveStream({ src, cameraId }) {
 
   useEffect(() => {
     let rafId = null;
+    const img = imgRef.current;
 
     const handleVisibility = () => {
       if (document.visibilityState === 'visible') {
@@ -629,7 +630,7 @@ const LiveStream = React.memo(function LiveStream({ src, cameraId }) {
       document.removeEventListener('visibilitychange', handleVisibility);
       if (rafId) cancelAnimationFrame(rafId);
       // Force-close the MJPEG socket on unmount.
-      if (imgRef.current) imgRef.current.src = '';
+      if (img) img.src = '';
     };
   }, []);
 

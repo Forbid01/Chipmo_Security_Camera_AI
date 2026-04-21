@@ -4,12 +4,15 @@ import { loadSlim } from "tsparticles-slim";
 
 const ParticleBackground = () => {
   const containerRef = useRef(null);
-  const [shouldRender, setShouldRender] = useState(false);
-  const [reducedMotion, setReducedMotion] = useState(false);
+  const [shouldRender, setShouldRender] = useState(
+    typeof IntersectionObserver === "undefined"
+  );
+  const [reducedMotion, setReducedMotion] = useState(
+    () => window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false
+  );
 
   useEffect(() => {
     const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
-    setReducedMotion(mq.matches);
     const handler = (e) => setReducedMotion(e.matches);
     mq.addEventListener?.("change", handler);
     return () => mq.removeEventListener?.("change", handler);
@@ -17,10 +20,7 @@ const ParticleBackground = () => {
 
   useEffect(() => {
     const node = containerRef.current;
-    if (!node || typeof IntersectionObserver === "undefined") {
-      setShouldRender(true);
-      return;
-    }
+    if (!node || typeof IntersectionObserver === "undefined") return;
     const io = new IntersectionObserver(
       ([entry]) => setShouldRender(entry.isIntersecting),
       { rootMargin: "200px" }
