@@ -5,20 +5,35 @@ TimescaleDB integration.
 
 ---
 
-## 1. Одоогийн schema (assumed)
+## 1. Одоогийн schema (repo-verified)
 
-Repo-д одоо байгаа гол хүснэгтүүд (multi-tenant structure):
+Repo-д одоо байгаа гол хүснэгтүүд (`shoplift_detector/app/db/models/*`):
 
 ```
-organizations (id, name, plan, created_at)
-  └─ users (id, org_id, email, password_hash, role)
-  └─ stores (id, org_id, name, address, settings)
-      └─ cameras (id, store_id, name, rtsp_url, status)
-          └─ alert_events (id, camera_id, timestamp, score, clip_path, label)
+organizations (id, name, created_at, updated_at)
+  └─ users (id, organization_id, username, email, hashed_password, role, is_active)
+  └─ stores (id, organization_id, name, address, alert_threshold, alert_cooldown, telegram_chat_id)
+      └─ cameras (id, store_id, organization_id, name, url, camera_type, is_active, is_ai_enabled)
+          └─ alerts (id, person_id, organization_id, store_id, camera_id, event_time,
+                     image_path, video_path, description, confidence_score,
+                     reviewed, feedback_status)
 
-feedback (id, alert_event_id, label, user_id, created_at)
-auto_learning_state (store_id, weights, last_trained_at)
+alert_feedback (id, alert_id, store_id, feedback_type, reviewer_id, notes,
+                score_at_alert, behaviors_detected, created_at)
+model_versions (id, store_id, version, model_type, learned_threshold,
+                learned_score_weights, total_feedback_used, is_active, trained_at)
 ```
+
+**Нэршлийн дүрэм:** Одоогийн production table нь `alerts`. Зарим target
+architecture хэсгүүд өмнө нь `alert_events` гэж нэрлэсэн байсан. Энэ document-д
+current-compatible migration-ууд `alerts` дээр ажиллана. Хэрэв ирээдүйд
+`alert_events` нэр рүү rename хийх бол тусдаа breaking migration + API compatibility
+plan шаардлагатай.
+
+**ID type:** Current repo `organizations`, `users`, `stores`, `cameras`, `alerts`
+зэрэг core table-ууд дээр integer primary key ашиглаж байна. Тиймээс ойрын
+migration-ууд core table рүү foreign key хийхдээ `INTEGER/BIGINT` ашиглана.
+Шинэ standalone table-ийн own `id` нь UUID байж болно.
 
 ---
 
@@ -31,7 +46,7 @@ Edge box бүрийг тусад нь бүртгэнэ.
 ```sql
 CREATE TABLE edge_boxes (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    store_id UUID NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
+    store_id INTEGER NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
     serial_number VARCHAR(64) UNIQUE,
     hostname VARCHAR(128),
     token_hash VARCHAR(255) NOT NULL,  -- bcrypt(edge_token)
@@ -97,7 +112,7 @@ Alert state machine (dedup-д).
 ```sql
 CREATE TABLE alert_state (
     id BIGSERIAL PRIMARY KEY,
-    camera_id UUID NOT NULL REFERENCES cameras(id) ON DELETE CASCADE,
+    camera_id INTEGER NOT NULL REFERENCES cameras(id) ON DELETE CASCADE,
     person_track_id INT NOT NULL,
     state VARCHAR(16) NOT NULL,
     -- idle, active, cooldown, resolved
@@ -105,7 +120,7 @@ CREATE TABLE alert_state (
     started_at TIMESTAMPTZ NOT NULL,
     last_trigger_at TIMESTAMPTZ NOT NULL,
     cooldown_expires_at TIMESTAMPTZ,
-    alert_event_id BIGINT REFERENCES alert_events(id),
+    alert_id BIGINT REFERENCES alerts(id),
 
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW(),
@@ -126,9 +141,9 @@ Qdrant-д хадгалсан case-уудын metadata PostgreSQL-д (joinable).
 ```sql
 CREATE TABLE cases (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    alert_event_id BIGINT REFERENCES alert_events(id) ON DELETE CASCADE,
-    store_id UUID NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
-    camera_id UUID NOT NULL REFERENCES cameras(id) ON DELETE CASCADE,
+    alert_id BIGINT REFERENCES alerts(id) ON DELETE CASCADE,
+    store_id INTEGER NOT NULL REFERENCES stores(id) ON DELETE CASCADE,
+    camera_id INTEGER NOT NULL REFERENCES cameras(id) ON DELETE CASCADE,
 
     timestamp TIMESTAMPTZ NOT NULL,
 
@@ -141,12 +156,12 @@ CREATE TABLE cases (
 
     -- Clip
     clip_path VARCHAR(500),
-    keyframe_paths TEXT[],  -- 3-5 keyframe-ийн S3/local path
+    keyframe_paths JSONB NOT NULL DEFAULT '[]'::jsonb,  -- 3-5 keyframe path
 
     -- Label
     label VARCHAR(32),  -- theft, false_positive, not_sure, unlabeled
     label_confidence FLOAT,
-    labeled_by UUID REFERENCES users(id),
+    labeled_by INTEGER REFERENCES users(id),
     labeled_at TIMESTAMPTZ,
 
     -- VLM verdict (if run)
@@ -173,7 +188,7 @@ Per-camera inference performance (TimescaleDB).
 
 ```sql
 CREATE TABLE inference_metrics (
-    camera_id UUID NOT NULL REFERENCES cameras(id) ON DELETE CASCADE,
+    camera_id INTEGER NOT NULL REFERENCES cameras(id) ON DELETE CASCADE,
     edge_box_id UUID REFERENCES edge_boxes(id),
     timestamp TIMESTAMPTZ NOT NULL,
 
@@ -198,7 +213,7 @@ Edge-рүү явсан sync pack-уудын тэмдэглэл.
 ```sql
 CREATE TABLE sync_packs (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    store_id UUID NOT NULL REFERENCES stores(id),
+    store_id INTEGER NOT NULL REFERENCES stores(id),
     edge_box_id UUID REFERENCES edge_boxes(id),
 
     version VARCHAR(32) NOT NULL,  -- semver
@@ -230,7 +245,7 @@ Compliance-ын audit log.
 ```sql
 CREATE TABLE audit_log (
     id BIGSERIAL PRIMARY KEY,
-    user_id UUID REFERENCES users(id),
+    user_id INTEGER REFERENCES users(id),
     action VARCHAR(64) NOT NULL,
     -- view_clip, download_clip, label_clip, delete_clip, config_change, ...
     resource_type VARCHAR(32),
@@ -251,7 +266,7 @@ Camera connectivity monitoring.
 
 ```sql
 CREATE TABLE camera_health (
-    camera_id UUID PRIMARY KEY REFERENCES cameras(id) ON DELETE CASCADE,
+    camera_id INTEGER PRIMARY KEY REFERENCES cameras(id) ON DELETE CASCADE,
     last_seen_at TIMESTAMPTZ,
     status VARCHAR(16) NOT NULL DEFAULT 'unknown',
     -- online, offline, degraded, unknown
@@ -261,9 +276,16 @@ CREATE TABLE camera_health (
 );
 ```
 
-### 2.9 `store_settings` (enhanced)
+### 2.9 `store_settings` / `stores.settings` (enhanced)
 
-Одоогийн `stores.settings` JSONB-д дараах нэмнэ:
+Одоогийн `stores` table-д `settings` JSONB байхгүй; `alert_threshold`,
+`alert_cooldown`, `telegram_chat_id` гэсэн explicit columns байна. Enhanced
+settings хийхдээ нэгийг сонгоно:
+
+1. `stores.settings JSONB` column нэмэх
+2. эсвэл тусдаа `store_settings` table үүсгэх
+
+Тохиргооны target shape:
 
 ```json
 {
@@ -292,30 +314,30 @@ CREATE TABLE camera_health (
 
 ---
 
-## 3. `alert_events` шинэчлэл
+## 3. `alerts` шинэчлэл
 
-Одоогийн table-д шинэ багана нэмнэ:
+Одоогийн `alerts` table-д шинэ багана нэмнэ:
 
 ```sql
-ALTER TABLE alert_events ADD COLUMN edge_box_id UUID REFERENCES edge_boxes(id);
-ALTER TABLE alert_events ADD COLUMN suppressed BOOLEAN DEFAULT FALSE;
-ALTER TABLE alert_events ADD COLUMN suppressed_reason TEXT;
-ALTER TABLE alert_events ADD COLUMN rag_decision VARCHAR(32);
+ALTER TABLE alerts ADD COLUMN edge_box_id UUID REFERENCES edge_boxes(id);
+ALTER TABLE alerts ADD COLUMN suppressed BOOLEAN DEFAULT FALSE;
+ALTER TABLE alerts ADD COLUMN suppressed_reason TEXT;
+ALTER TABLE alerts ADD COLUMN rag_decision VARCHAR(32);
 -- rag_decision: passed, suppressed_by_rag, not_run
-ALTER TABLE alert_events ADD COLUMN vlm_decision VARCHAR(32);
+ALTER TABLE alerts ADD COLUMN vlm_decision VARCHAR(32);
 -- vlm_decision: passed, suppressed_by_vlm, not_run
-ALTER TABLE alert_events ADD COLUMN person_track_id INT;
+ALTER TABLE alerts ADD COLUMN person_track_id INT;
 
-CREATE INDEX idx_alert_events_suppressed ON alert_events(store_id, timestamp DESC)
+CREATE INDEX idx_alerts_suppressed ON alerts(store_id, event_time DESC)
     WHERE suppressed = FALSE;
-CREATE INDEX idx_alert_events_edge ON alert_events(edge_box_id, timestamp DESC);
+CREATE INDEX idx_alerts_edge ON alerts(edge_box_id, event_time DESC);
 ```
 
 Мөн TimescaleDB hypertable болгоно:
 
 ```sql
-SELECT create_hypertable('alert_events', 'timestamp', if_not_exists => TRUE);
-SELECT add_retention_policy('alert_events', INTERVAL '2 years');
+SELECT create_hypertable('alerts', 'event_time', if_not_exists => TRUE);
+SELECT add_retention_policy('alerts', INTERVAL '2 years');
 ```
 
 ---
@@ -338,12 +360,11 @@ CREATE MATERIALIZED VIEW store_fp_rate_daily
 WITH (timescaledb.continuous) AS
 SELECT
     store_id,
-    time_bucket('1 day', timestamp) AS day,
-    COUNT(*) FILTER (WHERE label = 'false_positive') AS false_positives,
-    COUNT(*) FILTER (WHERE label = 'theft') AS true_positives,
+    time_bucket('1 day', event_time) AS day,
+    COUNT(*) FILTER (WHERE feedback_status = 'false_positive') AS false_positives,
+    COUNT(*) FILTER (WHERE feedback_status = 'true_positive') AS true_positives,
     COUNT(*) AS total_alerts
-FROM alert_events
-JOIN feedback ON feedback.alert_event_id = alert_events.id
+FROM alerts
 GROUP BY store_id, day;
 
 SELECT add_continuous_aggregate_policy('store_fp_rate_daily',
@@ -371,8 +392,8 @@ VectorParams(
 # Payload
 {
     "case_id": UUID,
-    "alert_event_id": BigInt,
-    "camera_id": UUID,
+    "alert_id": BigInt,
+    "camera_id": int,
     "timestamp": ISO8601,
     "label": str,
     "confidence": float,
@@ -422,21 +443,29 @@ VectorParams(
 
 ## 6. Alembic migrations дараалал
 
-Хийх migration-уудын дараалал:
+Migration lock: [07-SCHEMA-MIGRATION-LOCK.md](./07-SCHEMA-MIGRATION-LOCK.md).
+
+Одоогийн Phase 1 migration-ууд болон дараагийн хийх migration-уудын locked
+дараалал:
 
 ```
 alembic/versions/
-  ├─ 20260420_001_add_edge_boxes.py
-  ├─ 20260420_002_add_alert_state.py
-  ├─ 20260420_003_add_cases.py
-  ├─ 20260420_004_timescaledb_setup.py
-  ├─ 20260420_005_hypertable_alert_events.py
-  ├─ 20260420_006_add_audit_log.py
-  ├─ 20260420_007_add_camera_health.py
-  ├─ 20260420_008_add_sync_packs.py
-  ├─ 20260420_009_add_inference_metrics.py
-  └─ 20260420_010_enhance_store_settings.py
+  ├─ 20260414_01_align_railway_schema.py
+  ├─ 20260416_01_add_telegram_chat_id_to_stores.py
+  ├─ 20260420_01_add_alert_state.py
+  ├─ 20260420_02_add_camera_health.py
+  ├─ 20260420_03_add_cases.py
+  ├─ 20260420_04_add_edge_boxes.py
+  ├─ 20260420_05_add_sync_packs.py
+  ├─ 20260420_06_add_inference_metrics.py
+  ├─ 20260420_07_add_audit_log.py
+  ├─ 20260420_08_timescaledb_spike_or_setup.py
+  └─ 20260420_09_enhance_store_settings.py
 ```
+
+T02 phase-ийн дүрэм: core table-уудын integer PK-г өөрчлөхгүй; шинэ table-ууд
+current core table рүү FK хийхдээ `INTEGER/BIGINT` хэрэглэнэ; `alerts` table-г
+`alert_events` болгон rename хийхгүй.
 
 Ерөнхий migration template:
 
@@ -454,7 +483,7 @@ def upgrade():
     op.create_table(
         "edge_boxes",
         sa.Column("id", sa.UUID, primary_key=True),
-        sa.Column("store_id", sa.UUID, sa.ForeignKey("stores.id"), nullable=False),
+        sa.Column("store_id", sa.Integer, sa.ForeignKey("stores.id"), nullable=False),
         sa.Column("serial_number", sa.String(64), unique=True),
         # ... (full schema above)
     )
@@ -470,8 +499,8 @@ def downgrade():
 
 | Data type | Location | Retention |
 |---|---|---|
-| alert_events (unlabeled) | TimescaleDB | 2 years |
-| alert_events (labeled) | TimescaleDB | Unlimited |
+| alerts (unlabeled) | TimescaleDB | 2 years |
+| alerts (labeled) | TimescaleDB | Unlimited |
 | edge_box_metrics | TimescaleDB | 30 days (compressed 7d+) |
 | inference_metrics | TimescaleDB | 30 days |
 | audit_log | TimescaleDB | 1 year |
@@ -518,7 +547,7 @@ Queryуудыг profile хийн optimize хийх:
 
 ## 10. Multi-tenant isolation
 
-**Ruult:** Бүх query-д `store_id` эсвэл `org_id` filter заавал orson байх.
+**Rule:** Бүх query-д `store_id` эсвэл `organization_id` filter заавал орсон байх.
 
 **Implementation:**
 - Row-level security (RLS) PostgreSQL
@@ -527,12 +556,13 @@ Queryуудыг profile хийн optimize хийх:
 
 ```sql
 -- Example RLS policy
-ALTER TABLE alert_events ENABLE ROW LEVEL SECURITY;
+ALTER TABLE alerts ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY alert_events_isolation ON alert_events
+CREATE POLICY alerts_isolation ON alerts
     FOR ALL
     USING (store_id IN (
-        SELECT id FROM stores WHERE org_id = current_setting('app.current_org_id')::uuid
+        SELECT id FROM stores
+        WHERE organization_id = current_setting('app.current_org_id')::integer
     ));
 ```
 
@@ -546,4 +576,4 @@ CREATE POLICY alert_events_isolation ON alert_events
 
 ---
 
-Updated: 2026-04-17
+Updated: 2026-04-20

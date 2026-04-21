@@ -1,0 +1,4 @@
+interface:
+  display_name: "Chipmo Scanner Engineering"
+  short_description: "Work safely on the Chipmo Scanner codebase"
+  default_prompt: "Use this skill when working on the Chipmo Scanner project. Read the repo docs first, preserve existing architecture, and verify changes with the appropriate backend/frontend checks."

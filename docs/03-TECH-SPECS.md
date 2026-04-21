@@ -37,13 +37,13 @@ class AlertState(Enum):
 ```sql
 CREATE TABLE alert_state (
     id BIGSERIAL PRIMARY KEY,
-    camera_id UUID NOT NULL,
+    camera_id INTEGER NOT NULL REFERENCES cameras(id) ON DELETE CASCADE,
     person_track_id INT NOT NULL,
     state VARCHAR(16) NOT NULL,
     started_at TIMESTAMPTZ NOT NULL,
     last_trigger_at TIMESTAMPTZ NOT NULL,
     cooldown_expires_at TIMESTAMPTZ,
-    alert_event_id BIGINT REFERENCES alert_events(id),
+    alert_id BIGINT REFERENCES alerts(id),
     UNIQUE (camera_id, person_track_id, started_at)
 );
 
@@ -52,7 +52,7 @@ CREATE INDEX idx_alert_state_camera ON alert_state (camera_id, state);
 
 ### Файлын байршил
 
-- Service: `shoplift_detector/services/alert_manager.py`
+- Service: `shoplift_detector/app/services/alert_manager.py`
 - Migration: `alembic/versions/xxxx_add_alert_state.py`
 - Test: `tests/services/test_alert_manager.py`
 
@@ -71,7 +71,7 @@ CREATE INDEX idx_alert_state_camera ON alert_state (camera_id, state);
 
 ### Шийдэл
 
-`shoplift_detector/config/tracker.yaml`:
+`shoplift_detector/app/config/tracker.yaml` (шинээр үүсгэнэ):
 
 ```yaml
 tracker_type: bytetrack
@@ -244,9 +244,9 @@ class DetectionConfig:
 
 ### Файлын байршил
 
-- Module: `shoplift_detector/ai/adaptive_config.py`
+- Module: `shoplift_detector/app/ai/adaptive_config.py`
 - Tests: `tests/ai/test_adaptive_config.py`
-- Config: `shoplift_detector/config/detection.yaml` (base values)
+- Config: `shoplift_detector/app/config/detection.yaml` (base values, шинээр үүсгэнэ)
 
 ### Acceptance
 
@@ -265,7 +265,7 @@ class DetectionConfig:
 **Model choice:** `osnet_x0_25` (жижиг model, 512-dim embedding, ~2.8M param)
 
 ```python
-# shoplift_detector/ai/reid.py
+# shoplift_detector/app/ai/reid.py
 
 import torch
 import torchreid
@@ -383,7 +383,7 @@ VectorParams(
 ### Check pipeline
 
 ```python
-# shoplift_detector/ai/rag_check.py
+# shoplift_detector/app/ai/rag_check.py
 
 def should_suppress_alert(
     case: CaseEmbedding,
@@ -418,8 +418,8 @@ def should_suppress_alert(
 
 ### Файлын байршил
 
-- Module: `shoplift_detector/ai/rag_check.py`
-- Schema: `shoplift_detector/models/case.py`
+- Module: `shoplift_detector/app/ai/rag_check.py`
+- Schema: `shoplift_detector/app/models/case.py` эсвэл SQLAlchemy model бол `shoplift_detector/app/db/models/case.py`
 - Seeding script: `scripts/seed_rag_from_feedback.py`
 - Test: `tests/ai/test_rag_check.py`
 
@@ -445,7 +445,7 @@ Rule + RAG-аар суьлсэн case-ыг финал confirm хийх.
 ### API client
 
 ```python
-# shoplift_detector/ai/vlm_client.py
+# shoplift_detector/app/ai/vlm_client.py
 
 import httpx
 from pydantic import BaseModel
@@ -556,7 +556,7 @@ GPU load-ийг идэвхгүй үед багасгах.
 ### Implementation
 
 ```python
-# shoplift_detector/streaming/fps_controller.py
+# shoplift_detector/app/streaming/fps_controller.py
 
 class FPSController:
     def __init__(self):
@@ -610,7 +610,7 @@ GPU forward pass нэг дор олон камерт ажиллуулж throughp
 ### Implementation
 
 ```python
-# shoplift_detector/ai/batch_inference.py
+# shoplift_detector/app/ai/batch_inference.py
 
 import asyncio
 from collections import defaultdict
@@ -703,7 +703,7 @@ trtexec --onnx=osnet_x0_25.onnx --saveEngine=osnet.trt --fp16
 
 ### Runtime integration
 
-`shoplift_detector/ai/trt_runtime.py` — TRT engine loader.
+`shoplift_detector/app/ai/trt_runtime.py` — TRT engine loader.
 
 ### Acceptance
 
@@ -720,7 +720,7 @@ trtexec --onnx=osnet_x0_25.onnx --saveEngine=osnet.trt --fp16
 ### Backend API
 
 ```python
-# shoplift_detector/api/labels.py
+# shoplift_detector/app/api/v1/labels.py
 
 @router.get("/labels/pending")
 async def list_pending_labels(store_id: UUID, limit: int = 20):
@@ -814,7 +814,7 @@ sync_pack_{store_id}_{version}.tar.gz
 ### Face blur (per-store toggle)
 
 ```python
-# shoplift_detector/ai/privacy.py
+# shoplift_detector/app/ai/privacy.py
 
 def blur_faces(frame: np.ndarray, pose_result) -> np.ndarray:
     """Blur face bbox in frame using pose keypoints."""
@@ -842,7 +842,7 @@ def blur_faces(frame: np.ndarray, pose_result) -> np.ndarray:
 ```sql
 CREATE TABLE audit_log (
     id BIGSERIAL PRIMARY KEY,
-    user_id UUID,
+    user_id INTEGER REFERENCES users(id),
     action VARCHAR(64),  -- view_clip, download_clip, label_clip
     resource_type VARCHAR(32),
     resource_id UUID,
@@ -868,4 +868,4 @@ CREATE TABLE audit_log (
 
 ---
 
-Updated: 2026-04-17
+Updated: 2026-04-20

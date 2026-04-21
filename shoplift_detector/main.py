@@ -9,7 +9,7 @@ import random  # noqa: E402
 import string  # noqa: E402
 import sys  # noqa: E402
 import threading  # noqa: E402
-from contextlib import asynccontextmanager  # noqa: E402
+from contextlib import asynccontextmanager, suppress  # noqa: E402
 from datetime import UTC, datetime, timedelta  # noqa: E402
 from typing import Annotated  # noqa: E402
 
@@ -117,6 +117,9 @@ async def lifespan(app: FastAPI):
     auto_learner_task = asyncio.create_task(
         _auto_learning_task(), name="auto-learner"
     )
+    clip_retention_task = asyncio.create_task(
+        _clip_retention_task(), name="clip-retention"
+    )
 
     if settings.SENTRY_DSN:
         try:
@@ -131,10 +134,11 @@ async def lifespan(app: FastAPI):
     # [SHUTDOWN]
     logger.info("shutting_down")
     auto_learner_task.cancel()
-    try:
+    clip_retention_task.cancel()
+    with suppress(asyncio.CancelledError, Exception):
         await auto_learner_task
-    except (asyncio.CancelledError, Exception):
-        pass
+    with suppress(asyncio.CancelledError, Exception):
+        await clip_retention_task
     # Release VideoCapture handles and destroy any OpenCV windows so Railway
     # doesn't leave ghost ffmpeg workers around between redeploys.
     camera_manager.shutdown_all()
@@ -231,6 +235,35 @@ async def _run_auto_learning():
         updated = await auto_learner.learn_from_feedback(db)
         if updated:
             logger.info("auto_learning_complete", stores_updated=len(updated))
+
+
+async def _clip_retention_task():
+    while True:
+        try:
+            if settings.MEDIA_RETENTION_ENABLED:
+                await _run_clip_retention_cleanup()
+            await asyncio.sleep(settings.MEDIA_RETENTION_INTERVAL_SECONDS)
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            logger.error("clip_retention_error", error=str(e))
+            await asyncio.sleep(60)
+
+
+async def _run_clip_retention_cleanup():
+    from app.services.clip_retention import clip_retention_cleaner
+
+    async with AsyncSessionLocal() as db:
+        result = await clip_retention_cleaner.cleanup(db)
+        logger.info(
+            "clip_retention_complete",
+            scanned=result.scanned,
+            deleted=result.deleted,
+            kept_labeled=result.kept_labeled,
+            kept_alert=result.kept_alert,
+            kept_fresh_normal=result.kept_fresh_normal,
+            errors=result.errors,
+        )
 
 
 # --- FastAPI App ---

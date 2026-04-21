@@ -28,7 +28,9 @@ export const useAlerts = (refreshInterval = 5000) => {
   const abortRef = useRef(null);
   const backoffRef = useRef(refreshInterval);
 
-  alertsRef.current = alerts;
+  useEffect(() => {
+    alertsRef.current = alerts;
+  }, [alerts]);
 
   const fetchAlerts = useCallback(async () => {
     if (abortRef.current) abortRef.current.abort();

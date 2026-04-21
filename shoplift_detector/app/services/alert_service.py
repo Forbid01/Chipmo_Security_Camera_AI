@@ -5,11 +5,8 @@ import tempfile
 import time
 
 import cv2
-import requests
 from app.core.config import TELEGRAM_CHAT_ID, TELEGRAM_TOKEN
 from app.core.state import alert_queue
-from requests.adapters import HTTPAdapter
-from urllib3.util.retry import Retry
 
 logger = logging.getLogger(__name__)
 
@@ -17,10 +14,32 @@ logger = logging.getLogger(__name__)
 def _is_remote_url(path: str) -> bool:
     return isinstance(path, str) and path.startswith(("http://", "https://"))
 
-# Telegram API-д retry логик нэмэх
-_session = requests.Session()
-_retry = Retry(total=3, backoff_factor=1, status_forcelist=[500, 502, 503, 504])
-_session.mount("https://", HTTPAdapter(max_retries=_retry))
+_session = None
+
+
+def _get_requests_session():
+    """Telegram API-д retry логиктой lazy session үүсгэнэ.
+
+    Keep this lazy so importing the FastAPI app in tests does not require the
+    optional Telegram HTTP dependency unless notifications are actually sent.
+    """
+    global _session
+    if _session is not None:
+        return _session
+
+    try:
+        import requests
+        from requests.adapters import HTTPAdapter
+        from urllib3.util.retry import Retry
+    except ImportError:
+        logger.warning("requests dependency missing; Telegram alert sending disabled")
+        return None
+
+    session = requests.Session()
+    retry = Retry(total=3, backoff_factor=1, status_forcelist=[500, 502, 503, 504])
+    session.mount("https://", HTTPAdapter(max_retries=retry))
+    _session = session
+    return session
 
 def save_video_optimized(frames, output_path):
     if not frames or len(frames) == 0:
@@ -69,9 +88,13 @@ def save_video_optimized(frames, output_path):
 def send_telegram_photo(token, chat_id, photo_path, caption):
     """Зураг Telegram-руу илгээх (retry логиктой)"""
     try:
+        session = _get_requests_session()
+        if session is None:
+            return False
+
         url = f"https://api.telegram.org/bot{token}/sendPhoto"
         with open(photo_path, 'rb') as p:
-            r = _session.post(url, data={
+            r = session.post(url, data={
                 'chat_id': chat_id,
                 'caption': caption,
                 'parse_mode': 'Markdown'
@@ -86,9 +109,13 @@ def send_telegram_photo(token, chat_id, photo_path, caption):
 def send_telegram_video(token, chat_id, video_path, caption):
     """Видео Telegram-руу илгээх (retry логиктой)"""
     try:
+        session = _get_requests_session()
+        if session is None:
+            return False
+
         url = f"https://api.telegram.org/bot{token}/sendVideo"
         with open(video_path, 'rb') as v:
-            r = _session.post(url, data={
+            r = session.post(url, data={
                 'chat_id': chat_id,
                 'caption': caption,
                 'parse_mode': 'Markdown'
