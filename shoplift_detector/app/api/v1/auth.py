@@ -3,6 +3,7 @@ import string
 from datetime import UTC, datetime, timedelta
 from typing import Annotated
 
+from app.core.rate_limiting import RateLimits, limiter
 from app.core.security import (
     CurrentUser,
     clear_auth_cookie,
@@ -26,11 +27,12 @@ from app.schemas.common import APIResponse
 from app.services.email_service import send_otp_email
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.security import OAuth2PasswordRequestForm
-from slowapi import Limiter
-from slowapi.util import get_remote_address
 
 router = APIRouter()
-limiter = Limiter(key_func=get_remote_address)
+# Keep `limiter` re-exported so existing decorators in this module
+# continue to work without change; underlying instance is now the
+# shared Redis-backed limiter from app.core.rate_limiting.
+__all__ = ["router", "limiter", "RateLimits"]
 
 LoginForm = Annotated[OAuth2PasswordRequestForm, Depends()]
 

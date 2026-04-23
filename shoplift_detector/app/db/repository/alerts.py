@@ -1,17 +1,10 @@
 import logging
-from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = logging.getLogger(__name__)
-
-
-def _seconds_since(event_time: datetime) -> float:
-    if event_time.tzinfo is None:
-        event_time = event_time.replace(tzinfo=UTC)
-    return (datetime.now(UTC) - event_time).total_seconds()
 
 
 class AlertRepository:
@@ -118,45 +111,57 @@ class AlertRepository:
         camera_id: int = None,
         confidence_score: float = None,
         video_path: str = None,
+        *,
+        person_track_id: int | None = None,
+        rag_decision: str | None = None,
+        vlm_decision: str | None = None,
+        suppressed: bool | None = None,
+        suppressed_reason: str | None = None,
     ) -> int | None:
+        # Deduplication is owned by AlertManager (alert_state table). This
+        # repository trusts that the caller has already passed dedup; a
+        # secondary 10s guard here would silently drop legitimate alerts
+        # after AlertManager has already reserved the cooldown slot.
         alerts_columns = await self._get_table_columns("alerts")
-        duplicate_conditions = ["person_id = :pid"]
-        params: dict[str, Any] = {"pid": person_id}
-        if camera_id is not None and "camera_id" in alerts_columns:
-            duplicate_conditions.append("camera_id = :cam_id")
-            params["cam_id"] = camera_id
 
-        check = text(f"""
-            SELECT event_time FROM alerts
-            WHERE {" AND ".join(duplicate_conditions)}
-            ORDER BY event_time DESC
-            LIMIT 1
-        """)
-        result = await self.db.execute(check, params)
-        last = result.fetchone()
-        if last and _seconds_since(last[0]) < 10:
-            return None
-
-        column_values = [
+        column_values: list[tuple[str, Any, str]] = [
             ("person_id", person_id, "pid"),
             ("image_path", image_path, "img"),
             ("description", reason, "desc"),
             ("organization_id", organization_id, "org_id"),
         ]
 
-        optional_values = [
+        # Optional legacy columns — include only when the caller supplied
+        # a value AND the column exists. Keeps the query stable across
+        # the pre-/post-migration schema window.
+        optional_values: list[tuple[str, Any, str]] = [
             ("store_id", store_id, "store_id"),
             ("camera_id", camera_id, "cam_id"),
             ("video_path", video_path, "vid"),
             ("confidence_score", confidence_score, "score"),
         ]
 
-        for column_name, value, param_name in optional_values:
-            if column_name in alerts_columns:
-                column_values.append((column_name, value, param_name))
+        # Pipeline v2 columns (T02-14). Each is additive: the column
+        # discovery guard below skips it on pre-migration schemas and
+        # skips it when the caller didn't pass a value.
+        pipeline_values: list[tuple[str, Any, str]] = [
+            ("person_track_id", person_track_id, "ptid"),
+            ("rag_decision", rag_decision, "rag"),
+            ("vlm_decision", vlm_decision, "vlm"),
+            ("suppressed", suppressed, "suppressed"),
+            ("suppressed_reason", suppressed_reason, "suppressed_reason"),
+        ]
+
+        for column_name, value, param_name in (*optional_values, *pipeline_values):
+            if column_name not in alerts_columns:
+                continue
+            if value is None:
+                continue
+            column_values.append((column_name, value, param_name))
 
         columns = ", ".join(column_name for column_name, _, _ in column_values)
-        values = ", ".join(f":{param_name}" for _, _, param_name in column_values)
+        placeholders = [f":{param_name}" for _, _, param_name in column_values]
+        values = ", ".join(placeholders)
         params = {param_name: value for _, value, param_name in column_values}
 
         query = text(f"""
@@ -168,6 +173,42 @@ class AlertRepository:
         await self.db.commit()
         row = result.fetchone()
         return row[0] if row else None
+
+    async def mark_suppressed(
+        self,
+        alert_id: int,
+        *,
+        reason: str,
+        rag_decision: str | None = None,
+        vlm_decision: str | None = None,
+    ) -> bool:
+        """Record a pipeline suppression decision on an already-inserted row.
+
+        Used by the RAG/VLM stages that consume a persisted alert and
+        need to mark it suppressed without re-inserting. Tolerates the
+        pre-migration schema where the columns don't exist yet.
+        """
+        alerts_columns = await self._get_table_columns("alerts")
+        if "suppressed" not in alerts_columns:
+            return False
+
+        sets = ["suppressed = TRUE", "suppressed_reason = :reason"]
+        params: dict[str, Any] = {"id": alert_id, "reason": reason}
+        if rag_decision is not None and "rag_decision" in alerts_columns:
+            sets.append("rag_decision = :rag")
+            params["rag"] = rag_decision
+        if vlm_decision is not None and "vlm_decision" in alerts_columns:
+            sets.append("vlm_decision = :vlm")
+            params["vlm"] = vlm_decision
+
+        query = text(f"""
+            UPDATE alerts
+            SET {", ".join(sets)}
+            WHERE id = :id
+        """)
+        result = await self.db.execute(query, params)
+        await self.db.commit()
+        return result.rowcount > 0
 
     async def get_latest_alerts(
         self,
@@ -215,31 +256,86 @@ class AlertRepository:
             alerts.append(item)
         return alerts
 
-    async def mark_alert_reviewed(self, alert_id: int) -> bool:
-        query = text("UPDATE alerts SET reviewed = TRUE WHERE id = :id")
-        result = await self.db.execute(query, {"id": alert_id})
+    async def mark_alert_reviewed(
+        self,
+        alert_id: int,
+        *,
+        organization_id: int | None = None,
+    ) -> bool:
+        """T02-22 defense-in-depth: caller passes the verified
+        organization_id (from require_alert_access) so the UPDATE
+        cannot cross a tenant boundary even if a future handler
+        forgets the dependency. `None` preserves legacy super-admin
+        paths that already run under a SuperAdmin gate.
+        """
+        clause, extra = self._tenant_clause(organization_id)
+        query = text(
+            f"UPDATE alerts SET reviewed = TRUE WHERE id = :id{clause}"
+        )
+        result = await self.db.execute(query, {"id": alert_id, **extra})
         await self.db.commit()
         return result.rowcount > 0
 
-    async def delete_alert(self, alert_id: int) -> bool:
-        query = text("DELETE FROM alerts WHERE id = :id")
-        result = await self.db.execute(query, {"id": alert_id})
+    async def delete_alert(
+        self,
+        alert_id: int,
+        *,
+        organization_id: int | None = None,
+    ) -> bool:
+        clause, extra = self._tenant_clause(organization_id)
+        query = text(f"DELETE FROM alerts WHERE id = :id{clause}")
+        result = await self.db.execute(query, {"id": alert_id, **extra})
         await self.db.commit()
         return result.rowcount > 0
 
-    async def update_feedback_status(self, alert_id: int, status: str) -> bool:
+    async def update_feedback_status(
+        self,
+        alert_id: int,
+        status: str,
+        *,
+        organization_id: int | None = None,
+    ) -> bool:
         alerts_columns = await self._get_table_columns("alerts")
+        clause, extra = self._tenant_clause(organization_id)
+
         if "feedback_status" in alerts_columns:
-            query = text("""
+            query = text(f"""
                 UPDATE alerts
                 SET feedback_status = :status, reviewed = TRUE
-                WHERE id = :id
+                WHERE id = :id{clause}
             """)
-            params = {"status": status, "id": alert_id}
+            params: dict[str, Any] = {"status": status, "id": alert_id, **extra}
         else:
-            query = text("UPDATE alerts SET reviewed = TRUE WHERE id = :id")
-            params = {"id": alert_id}
+            query = text(
+                f"UPDATE alerts SET reviewed = TRUE WHERE id = :id{clause}"
+            )
+            params = {"id": alert_id, **extra}
 
         result = await self.db.execute(query, params)
         await self.db.commit()
         return result.rowcount > 0
+
+    @staticmethod
+    def _tenant_clause(
+        organization_id: int | None,
+    ) -> tuple[str, dict[str, Any]]:
+        """Build a WHERE-fragment that pins the row to the caller's org.
+
+        Alerts sometimes carry a NULL `organization_id` column on legacy
+        rows; fall back to the camera's organization_id through a
+        correlated subquery so the filter still matches after the
+        T02-21 handler guard approved the call.
+        """
+        if organization_id is None:
+            return "", {}
+        clause = (
+            " AND ("
+            "  alerts.organization_id = :org_id"
+            "  OR (alerts.organization_id IS NULL AND EXISTS ("
+            "    SELECT 1 FROM cameras c"
+            "    WHERE c.id = alerts.camera_id"
+            "      AND c.organization_id = :org_id"
+            "  ))"
+            ")"
+        )
+        return clause, {"org_id": organization_id}

@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="mn">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sentry Архитектур v3.0 (SaaS)</title>
+<style>
+:root { color-scheme: light; }
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background: #fafafa;
+  color: #1a1a1a;
+  line-height: 1.6;
+  padding: 32px 24px;
+}
+.container { max-width: 1180px; margin: 0 auto; }
+h1 { font-size: 30px; font-weight: 700; margin-bottom: 8px; color: #0a0a0a; }
+.subtitle { color: #666; margin-bottom: 8px; font-size: 15px; }
+.version-badge {
+  display: inline-block;
+  background: #10b981;
+  color: white;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 12px;
+  margin-bottom: 24px;
+  letter-spacing: 0.5px;
+}
+section {
+  background: white;
+  border-radius: 12px;
+  padding: 28px;
+  margin-bottom: 24px;
+  border: 1px solid #e5e5e5;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+}
+h2 { font-size: 22px; font-weight: 600; margin-bottom: 6px; color: #0a0a0a; }
+h3 { font-size: 16px; font-weight: 600; margin: 20px 0 10px; color: #1f2937; }
+.section-desc { color: #666; font-size: 14px; margin-bottom: 20px; }
+.arch-flow { background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%); border-radius: 12px; padding: 24px; }
+.flow-tier { background: white; border-radius: 10px; padding: 18px; margin-bottom: 16px; border-left: 4px solid; }
+.tier-customer { border-color: #3b82f6; }
+.tier-network { border-color: #94a3b8; }
+.tier-server { border-color: #10b981; }
+.tier-ui { border-color: #8b5cf6; }
+.tier-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px; }
+.tier-title { font-weight: 700; font-size: 16px; }
+.tier-tag { font-size: 11px; font-weight: 600; padding: 3px 8px; border-radius: 10px; text-transform: uppercase; }
+.tier-customer .tier-tag { background: #dbeafe; color: #1d4ed8; }
+.tier-network .tier-tag { background: #f1f5f9; color: #475569; }
+.tier-server .tier-tag { background: #d1fae5; color: #047857; }
+.tier-ui .tier-tag { background: #ede9fe; color: #6d28d9; }
+.tier-blocks { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; }
+.block { background: #f8fafc; border-radius: 8px; padding: 12px; border: 1px solid #e5e7eb; }
+.block-icon { font-size: 22px; margin-bottom: 6px; }
+.block-name { font-weight: 600; font-size: 13px; margin-bottom: 4px; }
+.block-desc { font-size: 11px; color: #64748b; line-height: 1.4; }
+.block-new { background: linear-gradient(135deg, #fef3c7 0%, #fff 100%); border-color: #fbbf24; position: relative; }
+.block-new::after { content: 'ШИНЭ'; font-size: 9px; background: #f59e0b; color: white; padding: 2px 6px; border-radius: 4px; margin-left: 6px; font-weight: 700; vertical-align: top; }
+.flow-arrow { text-align: center; color: #10b981; font-size: 24px; margin: 4px 0; font-weight: bold; }
+.reid-demo { background: #0f172a; border-radius: 12px; padding: 24px; margin-top: 16px; color: white; }
+.cameras-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 20px; }
+.cam-view { background: #1e293b; border: 2px solid #334155; border-radius: 8px; padding: 14px; position: relative; min-height: 130px; }
+.cam-view.active { border-color: #ef4444; box-shadow: 0 0 20px rgba(239,68,68,0.3); }
+.cam-name { font-size: 11px; color: #94a3b8; margin-bottom: 8px; font-family: monospace; }
+.cam-content { display: flex; flex-direction: column; gap: 6px; }
+.person-tag { background: rgba(59,130,246,0.15); border: 1px solid #3b82f6; border-radius: 4px; padding: 4px 8px; font-size: 12px; color: #93c5fd; font-family: monospace; }
+.person-tag.suspicious { background: rgba(239,68,68,0.15); border-color: #ef4444; color: #fca5a5; }
+.cam-time { position: absolute; top: 12px; right: 12px; font-size: 10px; color: #64748b; }
+.reid-conn { text-align: center; font-size: 12px; color: #94a3b8; font-family: monospace; }
+.reid-conn .arrow { color: #10b981; font-size: 20px; }
+.scoring-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 16px; }
+.score-formula { background: #f8fafc; border-radius: 10px; padding: 20px; font-family: monospace; font-size: 13px; }
+.formula-line { margin-bottom: 10px; }
+.formula-comment { color: #64748b; font-size: 11px; }
+.action-table { background: white; border: 1px solid #e5e7eb; border-radius: 10px; overflow: hidden; }
+.action-row { display: grid; grid-template-columns: 1fr auto; padding: 8px 14px; font-size: 13px; border-bottom: 1px solid #f1f5f9; align-items: center; }
+.action-row:last-child { border-bottom: none; }
+.action-name { color: #334155; }
+.action-weight { font-family: monospace; font-weight: 700; padding: 2px 8px; border-radius: 4px; font-size: 11px; }
+.w-low { background: #dcfce7; color: #166534; }
+.w-med { background: #fef3c7; color: #854d0e; }
+.w-high { background: #fee2e2; color: #991b1b; }
+.w-crit { background: #1f2937; color: white; }
+.w-neg { background: #dbeafe; color: #1e40af; }
+.alert-tiers { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 16px; }
+.tier-card { border-radius: 10px; padding: 16px; border: 2px solid; }
+.tier-green { border-color: #10b981; background: #f0fdf4; }
+.tier-yellow { border-color: #eab308; background: #fefce8; }
+.tier-orange { border-color: #f97316; background: #fff7ed; }
+.tier-red { border-color: #ef4444; background: #fef2f2; }
+.tier-card-name { font-weight: 700; font-size: 16px; margin-bottom: 4px; }
+.tier-green .tier-card-name { color: #047857; }
+.tier-yellow .tier-card-name { color: #a16207; }
+.tier-orange .tier-card-name { color: #c2410c; }
+.tier-red .tier-card-name { color: #b91c1c; }
+.tier-range { font-family: monospace; font-size: 11px; color: #64748b; margin-bottom: 10px; }
+.tier-actions { font-size: 12px; color: #334155; }
+.tier-actions div { margin-bottom: 4px; }
+.state-box { background: #1e293b; color: #e2e8f0; border-radius: 10px; padding: 20px; font-family: monospace; font-size: 12px; line-height: 1.7; margin-top: 16px; overflow-x: auto; }
+.state-key { color: #93c5fd; }
+.state-string { color: #86efac; }
+.state-number { color: #fbbf24; }
+.state-comment { color: #64748b; font-style: italic; }
+.ui-comparison { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 16px; }
+.ui-card { border-radius: 10px; padding: 20px; border: 2px solid; }
+.ui-bad { border-color: #fecaca; background: #fef2f2; }
+.ui-good { border-color: #bbf7d0; background: #f0fdf4; }
+.ui-label { font-weight: 700; font-size: 14px; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+.ui-bad .ui-label { color: #b91c1c; }
+.ui-good .ui-label { color: #047857; }
+.ui-mockup { background: #1f2937; border-radius: 6px; padding: 16px; color: white; font-family: monospace; font-size: 13px; }
+.metrics-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; margin-top: 16px; }
+.metric-card { background: linear-gradient(135deg, #f0f9ff 0%, white 100%); border: 1px solid #bae6fd; border-radius: 10px; padding: 16px; }
+.metric-label { font-size: 12px; color: #64748b; margin-bottom: 4px; }
+.metric-value { font-size: 24px; font-weight: 700; color: #0c4a6e; }
+.metric-target { font-size: 11px; color: #64748b; margin-top: 4px; }
+.callout { background: #fef3c7; border-left: 4px solid #f59e0b; padding: 14px 18px; border-radius: 6px; font-size: 14px; margin-top: 16px; }
+.callout strong { color: #92400e; }
+.callout-info { background: #dbeafe; border-color: #3b82f6; }
+.callout-info strong { color: #1e40af; }
+@media (max-width: 768px) { .scoring-grid, .ui-comparison, .alert-tiers, .cameras-row { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<div class="container">
+<h1>Sentry Архитектур</h1>
+<p class="subtitle">SaaS хулгайч илрүүлэх AI системийн бүрэн архитектур — 5 tier (Edge → Network → AI → UI → SaaS Platform)</p>
+<span class="version-badge">v3.0 — SaaS layer + Telegram + Onboarding</span>
+
+<section>
+<h2>🏗️ Бүрэн архитектур (4 түвшин)</h2>
+<p class="section-desc">Edge agent → Network → AI server → User UI</p>
+<div class="arch-flow">
+<div class="flow-tier tier-customer">
+<div class="tier-header"><div class="tier-title">🏪 Tier 1: Харилцагчийн талбар (Edge)</div><div class="tier-tag">Docker Agent</div></div>
+<div class="tier-blocks">
+<div class="block"><div class="block-icon">📹</div><div class="block-name">IP Cameras (1-32 ш)</div><div class="block-desc">RTSP/ONVIF, H.264/265, sub-stream</div></div>
+<div class="block"><div class="block-icon">🐳</div><div class="block-name">Sentry Agent</div><div class="block-desc">Python + OpenCV, Docker container</div></div>
+<div class="block"><div class="block-icon">⚡</div><div class="block-name">Motion Filter</div><div class="block-desc">CPU-based, 70-80% frame шүүж хаяна</div></div>
+<div class="block"><div class="block-icon">💾</div><div class="block-name">Local Buffer</div><div class="block-desc">5 минут network drop үед</div></div>
+</div>
+</div>
+<div class="flow-arrow">↓</div>
+<div class="flow-tier tier-network">
+<div class="tier-header"><div class="tier-title">🌐 Tier 2: Сүлжээ</div><div class="tier-tag">TLS 1.3</div></div>
+<div class="tier-blocks">
+<div class="block"><div class="block-icon">🔒</div><div class="block-name">Outbound TLS Tunnel</div><div class="block-desc">NAT/firewall friendly, AES-256</div></div>
+<div class="block"><div class="block-icon">📊</div><div class="block-name">~1 Mbps/cam</div><div class="block-desc">Sub-stream + motion only</div></div>
+<div class="block"><div class="block-icon">🔄</div><div class="block-name">WebRTC P2P (live view)</div><div class="block-desc">Manager ↔ Agent direct</div></div>
+</div>
+</div>
+<div class="flow-arrow">↓</div>
+<div class="flow-tier tier-server">
+<div class="tier-header"><div class="tier-title">🖥️ Tier 3: AI Сервер (RTX 5090)</div><div class="tier-tag">FastAPI Backend</div></div>
+<div class="tier-blocks">
+<div class="block"><div class="block-icon">👁️</div><div class="block-name">YOLO11-pose</div><div class="block-desc">Хүн detect + 17 keypoint</div></div>
+<div class="block"><div class="block-icon">🎯</div><div class="block-name">ByteTrack</div><div class="block-desc">Per-camera frame tracking</div></div>
+<div class="block block-new"><div class="block-icon">🔍</div><div class="block-name">OSNet Re-ID</div><div class="block-desc">512-dim embedding, cross-camera</div></div>
+<div class="block"><div class="block-icon">🧠</div><div class="block-name">Qwen2.5-VL 7B</div><div class="block-desc">Action recognition, монгол хэл</div></div>
+<div class="block block-new"><div class="block-icon">⚖️</div><div class="block-name">Scoring Engine</div><div class="block-desc">Weighted sum + time decay</div></div>
+<div class="block block-new"><div class="block-icon">🚨</div><div class="block-name">Alert Router</div><div class="block-desc">4-tier escalation</div></div>
+</div>
+<h3 style="margin-top: 16px; font-size: 13px;">Storage layer:</h3>
+<div class="tier-blocks">
+<div class="block"><div class="block-icon">⚡</div><div class="block-name">Redis</div><div class="block-desc">Live person state (30 мин TTL)</div></div>
+<div class="block"><div class="block-icon">🗂️</div><div class="block-name">Qdrant</div><div class="block-desc">Re-ID embeddings vector DB</div></div>
+<div class="block"><div class="block-icon">🐘</div><div class="block-name">PostgreSQL</div><div class="block-desc">Events, incidents, users</div></div>
+<div class="block"><div class="block-icon">📼</div><div class="block-name">MinIO/S3</div><div class="block-desc">Event clips (90 хоног max)</div></div>
+</div>
+</div>
+<div class="flow-arrow">↓</div>
+<div class="flow-tier tier-ui">
+<div class="tier-header"><div class="tier-title">📱 Tier 4: Хэрэглэгчийн интерфэйс</div><div class="tier-tag">Next.js + React Native</div></div>
+<div class="tier-blocks">
+<div class="block"><div class="block-icon">🖥️</div><div class="block-name">Manager Web</div><div class="block-desc">Live grid, alert queue, history</div></div>
+<div class="block"><div class="block-icon">📲</div><div class="block-name">Mobile App</div><div class="block-desc">Push alert, quick view (Phase 2)</div></div>
+<div class="block"><div class="block-icon">📊</div><div class="block-name">Owner Dashboard</div><div class="block-desc">Multi-store ROI, тайлан</div></div>
+<div class="block block-new"><div class="block-icon">💬</div><div class="block-name">Telegram Bot</div><div class="block-desc">Алерт + snapshot + acknowledge button</div></div>
+<div class="block"><div class="block-icon">🔔</div><div class="block-name">Multi-Channel Notify</div><div class="block-desc">Push · SMS · Email · Telegram · Sound</div></div>
+</div>
+</div>
+
+<div class="flow-arrow">↓</div>
+
+<div class="flow-tier" style="border-color: #ec4899;">
+<div class="tier-header"><div class="tier-title">⚙️ Tier 5: SaaS Platform Layer</div><div class="tier-tag" style="background:#fce7f3; color:#9d174d;">Multi-Tenancy</div></div>
+<div class="tier-blocks">
+<div class="block block-new"><div class="block-icon">🚪</div><div class="block-name">Self-Service Onboarding</div><div class="block-desc">Signup → Pay → Installer → 15 мин setup</div></div>
+<div class="block block-new"><div class="block-icon">🔐</div><div class="block-name">Identity & Auth</div><div class="block-desc">Clerk · OAuth2 · 2FA · per-tenant API key</div></div>
+<div class="block block-new"><div class="block-icon">💳</div><div class="block-name">Billing Service</div><div class="block-desc">QPay · Stripe · invoice (НӨАТ) · trial</div></div>
+<div class="block block-new"><div class="block-icon">👤</div><div class="block-name">Customer Portal</div><div class="block-desc">Account · Team · Billing · Usage</div></div>
+<div class="block block-new"><div class="block-icon">📈</div><div class="block-name">Usage Metering</div><div class="block-desc">Camera · GPU sec · Storage daily aggregation</div></div>
+<div class="block block-new"><div class="block-icon">🚧</div><div class="block-name">Quota Enforcement</div><div class="block-desc">Per-tenant limits · noisy neighbor block</div></div>
+<div class="block block-new"><div class="block-icon">📊</div><div class="block-name">Status Page</div><div class="block-desc">status.sentry.mn · 99.5% SLA</div></div>
+<div class="block block-new"><div class="block-icon">📉</div><div class="block-name">Product Analytics</div><div class="block-desc">PostHog · onboarding funnel · churn</div></div>
+</div>
+</div>
+
+</div>
+</section>
+
+<section>
+<h2>🎬 Cross-Camera Re-Identification (гол шинэ функц)</h2>
+<p class="section-desc">1 хүн → 3 камер дамжих жишээ</p>
+<div class="reid-demo">
+<div class="cameras-row">
+<div class="cam-view"><div class="cam-name">CAM_01 — Үүд</div><div class="cam-time">14:22:08</div><div class="cam-content"><div class="person-tag">P-247 entered</div><div class="person-tag" style="background:rgba(34,197,94,0.15); border-color:#22c55e; color:#86efac;">score: 5%</div></div></div>
+<div class="cam-view"><div class="cam-name">CAM_03 — Сүүний хэсэг</div><div class="cam-time">14:31:45</div><div class="cam-content"><div class="person-tag" style="background:rgba(245,158,11,0.15); border-color:#f59e0b; color:#fbbf24;">P-247 (Re-ID match: 0.87)</div><div class="person-tag" style="background:rgba(245,158,11,0.15); border-color:#f59e0b; color:#fbbf24;">score: 35%</div></div></div>
+<div class="cam-view active"><div class="cam-name">CAM_07 — Гарц</div><div class="cam-time">14:42:08</div><div class="cam-content"><div class="person-tag suspicious">P-247 (same person)</div><div class="person-tag suspicious">score: 87% — RED</div></div></div>
+</div>
+<div class="reid-conn">Re-ID embedding pipeline:<br><span class="arrow">↓</span><br>OSNet → 512-dim vector → Qdrant search → cosine_sim &gt; 0.75 → MERGE</div>
+</div>
+<div class="callout callout-info"><strong>Гол санаа:</strong> Person ID нь анонимизсан (нэр биш!) — биометрийн хууль зөрчихгүй. 30 минутын дараа автоматаар expire болж устгана.</div>
+</section>
+
+<section>
+<h2>📦 Person State (Redis-д хадгалагдах)</h2>
+<p class="section-desc">Хүн бүрт live state — 30 минут persist</p>
+<div class="state-box">
+{<br>
+&nbsp;&nbsp;<span class="state-key">"person_id"</span>: <span class="state-string">"P-store42-20260414-247"</span>,<br>
+&nbsp;&nbsp;<span class="state-key">"store_id"</span>: <span class="state-string">"store_42"</span>,<br>
+&nbsp;&nbsp;<span class="state-key">"first_seen"</span>: <span class="state-string">"14:22:08"</span>,<br>
+&nbsp;&nbsp;<span class="state-key">"last_seen"</span>: <span class="state-string">"14:42:08"</span>,<br>
+&nbsp;&nbsp;<span class="state-key">"embedding"</span>: [<span class="state-number">0.12, -0.45, 0.78, ...</span>],&nbsp;&nbsp;<span class="state-comment">// 512 floats</span><br>
+&nbsp;&nbsp;<span class="state-key">"cameras_visited"</span>: [<span class="state-string">"cam_01", "cam_03", "cam_07"</span>],<br>
+&nbsp;&nbsp;<span class="state-key">"current_camera"</span>: <span class="state-string">"cam_07"</span>,<br>
+&nbsp;&nbsp;<span class="state-key">"actions_log"</span>: [<br>
+&nbsp;&nbsp;&nbsp;&nbsp;{<span class="state-key">"t"</span>:<span class="state-string">"14:23"</span>, <span class="state-key">"cam"</span>:<span class="state-string">"cam_01"</span>, <span class="state-key">"action"</span>:<span class="state-string">"тавиур үзэх"</span>, <span class="state-key">"weight"</span>:<span class="state-number">0.05</span>},<br>
+&nbsp;&nbsp;&nbsp;&nbsp;{<span class="state-key">"t"</span>:<span class="state-string">"14:31"</span>, <span class="state-key">"cam"</span>:<span class="state-string">"cam_03"</span>, <span class="state-key">"action"</span>:<span class="state-string">"эргэн харах"</span>, <span class="state-key">"weight"</span>:<span class="state-number">0.30</span>},<br>
+&nbsp;&nbsp;&nbsp;&nbsp;{<span class="state-key">"t"</span>:<span class="state-string">"14:38"</span>, <span class="state-key">"cam"</span>:<span class="state-string">"cam_07"</span>, <span class="state-key">"action"</span>:<span class="state-string">"бараа халаасандаа"</span>, <span class="state-key">"weight"</span>:<span class="state-number">0.85</span>},<br>
+&nbsp;&nbsp;&nbsp;&nbsp;{<span class="state-key">"t"</span>:<span class="state-string">"14:41"</span>, <span class="state-key">"cam"</span>:<span class="state-string">"cam_07"</span>, <span class="state-key">"action"</span>:<span class="state-string">"касс тойрох"</span>, <span class="state-key">"weight"</span>:<span class="state-number">0.70</span>}<br>
+&nbsp;&nbsp;],<br>
+&nbsp;&nbsp;<span class="state-key">"suspicion_score"</span>: <span class="state-number">0.87</span>,<br>
+&nbsp;&nbsp;<span class="state-key">"risk_level"</span>: <span class="state-string">"RED"</span>,<br>
+&nbsp;&nbsp;<span class="state-key">"alert_sent"</span>: <span class="state-string">"manager+sms"</span>,<br>
+&nbsp;&nbsp;<span class="state-key">"ttl_seconds"</span>: <span class="state-number">1800</span>&nbsp;&nbsp;<span class="state-comment">// 30 минут</span><br>
+}
+</div>
+</section>
+
+<section>
+<h2>⚖️ Suspicion Scoring Engine</h2>
+<p class="section-desc">Зан үйл бүрийг нэгтгэн magadlal тооцох</p>
+<div class="scoring-grid">
+<div class="score-formula">
+<div class="formula-line"><strong>score(t) = </strong></div>
+<div class="formula-line">&nbsp;&nbsp;Σ ( <span style="color:#ef4444;">w_i</span> × <span style="color:#3b82f6;">decay(Δt)</span> × <span style="color:#10b981;">conf_i</span> )</div>
+<div class="formula-line">&nbsp;&nbsp;<span class="formula-comment">i ∈ all actions</span></div><br>
+<div class="formula-line"><strong>decay(Δt) = </strong></div>
+<div class="formula-line">&nbsp;&nbsp;exp( -Δt / τ )&nbsp;&nbsp;&nbsp;<span class="formula-comment">τ = 600s</span></div><br>
+<div class="formula-line"><strong>risk_level = </strong></div>
+<div class="formula-line">&nbsp;&nbsp;<span style="color:#10b981;">GREEN</span>&nbsp;&nbsp;if score &lt; 0.40</div>
+<div class="formula-line">&nbsp;&nbsp;<span style="color:#eab308;">YELLOW</span> if score &lt; 0.70</div>
+<div class="formula-line">&nbsp;&nbsp;<span style="color:#f97316;">ORANGE</span> if score &lt; 0.85</div>
+<div class="formula-line">&nbsp;&nbsp;<span style="color:#ef4444;">RED</span>&nbsp;&nbsp;&nbsp;&nbsp;if score ≥ 0.85</div>
+</div>
+<div class="action-table">
+<div class="action-row" style="background:#f8fafc; font-weight:700;"><div class="action-name">Action</div><div class="action-weight" style="background:transparent; color:#64748b;">Weight</div></div>
+<div class="action-row"><div class="action-name">Тавиур үзэх</div><div class="action-weight w-low">0.05</div></div>
+<div class="action-row"><div class="action-name">Бараа гартаа авах</div><div class="action-weight w-low">0.10</div></div>
+<div class="action-row"><div class="action-name">Сагсанд хийх</div><div class="action-weight w-low">0.00</div></div>
+<div class="action-row"><div class="action-name">Эргэн тойрон харах</div><div class="action-weight w-med">0.30</div></div>
+<div class="action-row"><div class="action-name">Удаан зогсох (>3мин)</div><div class="action-weight w-med">0.25</div></div>
+<div class="action-row"><div class="action-name">Камер чиглэл харах</div><div class="action-weight w-med">0.40</div></div>
+<div class="action-row"><div class="action-name">Бараа халаас/уут руу</div><div class="action-weight w-high">0.85</div></div>
+<div class="action-row"><div class="action-name">Үнийн шошго урах</div><div class="action-weight w-high">0.80</div></div>
+<div class="action-row"><div class="action-name">Касс тойрох</div><div class="action-weight w-high">0.70</div></div>
+<div class="action-row"><div class="action-name">Касс төлбөргүй гарах</div><div class="action-weight w-crit">1.00</div></div>
+<div class="action-row" style="background:#f0f9ff;"><div class="action-name">Касст төлсөн</div><div class="action-weight w-neg">−0.50</div></div>
+<div class="action-row" style="background:#f0f9ff;"><div class="action-name">Бараа буцааж тавьсан</div><div class="action-weight w-neg">−0.30</div></div>
+</div>
+</div>
+</section>
+
+<section>
+<h2>🚨 Alert Escalation Tier</h2>
+<p class="section-desc">Score-ын түвшинд тохирсон 4 шатлалт мэдэгдэл</p>
+<div class="alert-tiers">
+<div class="tier-card tier-green"><div class="tier-card-name">🟢 GREEN</div><div class="tier-range">0 — 40%</div><div class="tier-actions"><div>✓ Зөвхөн log</div><div>✓ UI overlay (manager)</div><div style="color:#64748b;">— Notification байхгүй</div></div></div>
+<div class="tier-card tier-yellow"><div class="tier-card-name">🟡 YELLOW</div><div class="tier-range">40 — 70%</div><div class="tier-actions"><div>✓ Dashboard notification</div><div>✓ <strong>Telegram + snapshot</strong></div><div>✓ Person highlight</div></div></div>
+<div class="tier-card tier-orange"><div class="tier-card-name">🟠 ORANGE</div><div class="tier-range">70 — 85%</div><div class="tier-actions"><div>✓ Manager pop-up</div><div>✓ <strong>Telegram + Email</strong></div><div>✓ Sound alert</div><div>✓ Camera highlight</div></div></div>
+<div class="tier-card tier-red"><div class="tier-card-name">🔴 RED</div><div class="tier-range">85 — 100%</div><div class="tier-actions"><div>✓ Push + SMS + <strong>Telegram</strong></div><div>✓ Snapshot attached</div><div>✓ Auto full-screen</div><div>✓ Loud sound alert</div></div></div>
+</div>
+<div class="callout callout-info" style="margin-top:16px;"><strong>Telegram-ийн чухал байдал:</strong> Монголын retail-д хамгийн өргөн ашиглагддаг messenger. Inline button-аар "Acknowledge / View / Dismiss" хийх боломжтой.</div>
+</section>
+
+<section>
+<h2>🚀 Self-Service Onboarding Flow (15 минут)</h2>
+<p class="section-desc">Landing-аас first detection хүртэлх 5 алхам</p>
+<div class="arch-flow">
+<div style="display:grid; grid-template-columns: repeat(5, 1fr); gap:12px; align-items:stretch;">
+<div class="block" style="text-align:center; background:#f0f9ff; border-color:#3b82f6;">
+<div class="block-icon">📝</div>
+<div class="block-name">1. Signup</div>
+<div class="block-desc">Имэйл + утас + дэлгүүрийн нэр</div>
+<div style="font-size:10px; color:#1d4ed8; font-weight:700; margin-top:6px;">~2 мин</div>
+</div>
+<div class="block" style="text-align:center; background:#fef3c7; border-color:#f59e0b;">
+<div class="block-icon">📦</div>
+<div class="block-name">2. Plan + Pay</div>
+<div class="block-desc">QPay / Stripe / 14-хон trial</div>
+<div style="font-size:10px; color:#92400e; font-weight:700; margin-top:6px;">~3 мин</div>
+</div>
+<div class="block" style="text-align:center; background:#ede9fe; border-color:#8b5cf6;">
+<div class="block-icon">⬇️</div>
+<div class="block-name">3. Installer</div>
+<div class="block-desc">Docker .exe / .sh татаж суулгах</div>
+<div style="font-size:10px; color:#6d28d9; font-weight:700; margin-top:6px;">~5 мин</div>
+</div>
+<div class="block" style="text-align:center; background:#dbeafe; border-color:#3b82f6;">
+<div class="block-icon">📷</div>
+<div class="block-name">4. Camera Connect</div>
+<div class="block-desc">ONVIF auto-discovery + test</div>
+<div style="font-size:10px; color:#1d4ed8; font-weight:700; margin-top:6px;">~3 мин</div>
+</div>
+<div class="block" style="text-align:center; background:#dcfce7; border-color:#10b981;">
+<div class="block-icon">🎉</div>
+<div class="block-name">5. First Detect</div>
+<div class="block-desc">YOLO алхуу хүн detect → celebrate!</div>
+<div style="font-size:10px; color:#047857; font-weight:700; margin-top:6px;">~2 мин</div>
+</div>
+</div>
+<div style="text-align:center; margin-top:16px; font-weight:700; color:#10b981; font-size:18px;">
+Total: ~15 минут ⏱️
+</div>
+</div>
+<div class="callout"><strong>Зорилт:</strong> 80%+ хэрэглэгчид signup → first detection-д 15 минутаас бага хугацаанд хүрэх.</div>
+</section>
+
+<section>
+<h2>🏢 Multi-Tenancy Data Isolation</h2>
+<p class="section-desc">Tenant бүрийн data ялгаатай namespace-д хадгалагдана</p>
+<div class="state-box">
+<span class="state-comment">// PostgreSQL — Row Level Security</span><br>
+SELECT * FROM events WHERE <span class="state-key">tenant_id</span> = current_setting(<span class="state-string">'app.current_tenant_id'</span>);<br><br>
+<span class="state-comment">// Redis — Namespaced keys</span><br>
+key = <span class="state-string">"tenant:abc-123:store:store-42:person:P-247"</span>;<br><br>
+<span class="state-comment">// Qdrant — Per-tenant collection</span><br>
+collection = <span class="state-string">"reid_tenant_abc_123"</span>;<br><br>
+<span class="state-comment">// MinIO — Bucket prefix</span><br>
+path = <span class="state-string">"tenant_abc123/store_42/2026-04-22/event_xyz.mp4"</span>;
+</div>
+<div class="callout callout-info"><strong>Isolation guarantee:</strong> Tenant А нь tenant Б-ийн data-д хэзээ ч хандаж чадахгүй. Цаашид Enterprise plan-д dedicated GPU + isolated DB schema нэмэгдэнэ (Phase 3).</div>
+</section>
+
+<section>
+<h2>⚖️ UI Хууль Зүйн Guidelines</h2>
+<p class="section-desc">Худал буруутгал ⇒ хариуцлагын эрсдэл. UI-г зөв design хийх ёстой.</p>
+<div class="ui-comparison">
+<div class="ui-card ui-bad">
+<div class="ui-label">❌ БҮҮ ИНГЭ</div>
+<div class="ui-mockup"><div style="border:2px solid #ef4444; padding:8px; border-radius:4px; display:inline-block;"><div style="color:#ef4444;">Сэжигтэй: 87%</div><div style="color:#fca5a5; font-size:11px;">Бараа нуух</div></div></div>
+<div style="margin-top:12px; font-size:12px; color:#7f1d1d;">• "Сэжигтэй" гэдэг үг шууд буруутгал<br>• % score нь нотлох баримт мэт сонсогдоно<br>• Customer хараад conflict болно</div>
+</div>
+<div class="ui-card ui-good">
+<div class="ui-label">✅ ИНГЭ</div>
+<div class="ui-mockup"><div style="border:2px solid #f97316; padding:8px; border-radius:4px; display:inline-block;"><div style="color:#fb923c;">Анхаарах түвшин: ӨНДӨР</div><div style="color:#fdba74; font-size:11px;">P-247 • Шалгах хэрэгтэй</div></div></div>
+<div style="margin-top:12px; font-size:12px; color:#14532d;">• Анонимизсан ID (нэр биш)<br>• Зөвхөн staff-ийн дэлгэцэнд<br>• "Шалгах" — буруутгал биш</div>
+</div>
+</div>
+<div class="callout"><strong>Disclaimer заавал:</strong> "Энэ систем нь зөвхөн анхаарал татах зорилготой бөгөөд хэн нэгнийг хулгайч гэж тогтоох баримт биш."</div>
+</section>
+
+<section>
+<h2>📊 Гол performance metrics</h2>
+<p class="section-desc">PRD дээр тохиролцсон target утгууд</p>
+<div class="metrics-grid">
+<div class="metric-card"><div class="metric-label">Detection latency</div><div class="metric-value">&lt;500ms</div><div class="metric-target">frame → score</div></div>
+<div class="metric-card"><div class="metric-label">Live stream latency</div><div class="metric-value">&lt;2s</div><div class="metric-target">camera → web</div></div>
+<div class="metric-card"><div class="metric-label">Re-ID matching</div><div class="metric-value">&lt;100ms</div><div class="metric-target">cross-camera</div></div>
+<div class="metric-card"><div class="metric-label">GPU capacity</div><div class="metric-value">6-8</div><div class="metric-target">харилцагч / RTX 5090</div></div>
+<div class="metric-card"><div class="metric-label">Re-ID accuracy</div><div class="metric-value">&gt;85%</div><div class="metric-target">5sec handoff</div></div>
+<div class="metric-card"><div class="metric-label">False positive</div><div class="metric-value">&lt;15%</div><div class="metric-target">MVP target</div></div>
+<div class="metric-card"><div class="metric-label">Bandwidth/customer</div><div class="metric-value">~1TB</div><div class="metric-target">сар бүр</div></div>
+<div class="metric-card"><div class="metric-label">System uptime</div><div class="metric-value">99.5%</div><div class="metric-target">SLA</div></div>
+</div>
+</section>
+
+<section>
+<h2>🛠️ Тех Stack хураангуй</h2>
+<p class="section-desc">Бүх layer-ийн technology choice</p>
+<div class="tier-blocks" style="grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));">
+<div class="block"><div class="block-icon">📹</div><div class="block-name">Edge Agent</div><div class="block-desc">Python · OpenCV · Docker · MediaMTX</div></div>
+<div class="block"><div class="block-icon">🎯</div><div class="block-name">Detection</div><div class="block-desc">YOLO11-pose · ByteTrack · Ultralytics</div></div>
+<div class="block"><div class="block-icon">🔍</div><div class="block-name">Re-ID</div><div class="block-desc">OSNet · FastReID · Qdrant vector DB</div></div>
+<div class="block"><div class="block-icon">🧠</div><div class="block-name">VLM/LLM</div><div class="block-desc">Qwen2.5-VL 7B · 4-bit quantized</div></div>
+<div class="block"><div class="block-icon">⚡</div><div class="block-name">Backend</div><div class="block-desc">FastAPI · Redis · PostgreSQL · MinIO</div></div>
+<div class="block"><div class="block-icon">🌐</div><div class="block-name">Frontend</div><div class="block-desc">Next.js · Tailwind · WebRTC · React Native</div></div>
+<div class="block"><div class="block-icon">🖥️</div><div class="block-name">Infrastructure</div><div class="block-desc">Self-hosted · RTX 5090 · Docker Compose</div></div>
+<div class="block"><div class="block-icon">🔒</div><div class="block-name">Security</div><div class="block-desc">TLS 1.3 · OAuth2 · 2FA · AES-256</div></div>
+</div>
+<div class="callout callout-info"><strong>Цаашдын алхам:</strong> Pilot customer сонгож, 1 дэлгүүрт MVP deploy хийх. 3 сарын дотор 8-12 камерт production validation. Дараа нь Phase 2 — 10 paying customer + mobile app.</div>
+</section>
+
+</div>
+</body>
+</html>

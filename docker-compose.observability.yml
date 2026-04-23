@@ -1,0 +1,97 @@
+version: "3.9"
+
+# Opt-in observability stack. Compose it on top of the main stack:
+#
+#   docker compose -f docker-compose.yml \
+#                  -f docker-compose.observability.yml up -d
+#
+# Adds:
+#   - prometheus  (scrapes chipmo-backend /metrics — see T02-08, T02-09)
+#   - loki        (log store)
+#   - promtail    (ships container stdout/stderr into Loki)
+#   - grafana     (prometheus + loki datasources pre-wired)
+#
+# Exposes:
+#   - Prometheus UI  →  http://localhost:9090
+#   - Loki API       →  http://localhost:3100
+#   - Grafana UI     →  http://localhost:3001   (admin / admin on first run)
+
+services:
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    container_name: chipmo-prometheus
+    restart: unless-stopped
+    volumes:
+      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=15d"
+      - "--web.enable-lifecycle"
+    ports:
+      - "9090:9090"
+    networks:
+      - chipmo-net
+    depends_on:
+      - app
+
+  loki:
+    image: grafana/loki:3.1.1
+    container_name: chipmo-loki
+    restart: unless-stopped
+    command: -config.file=/etc/loki/loki-config.yml
+    volumes:
+      - ./observability/loki/loki-config.yml:/etc/loki/loki-config.yml:ro
+      - loki_data:/loki
+    ports:
+      - "3100:3100"
+    networks:
+      - chipmo-net
+
+  promtail:
+    image: grafana/promtail:3.1.1
+    container_name: chipmo-promtail
+    restart: unless-stopped
+    command: -config.file=/etc/promtail/promtail-config.yml
+    volumes:
+      - ./observability/promtail/promtail-config.yml:/etc/promtail/promtail-config.yml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+    networks:
+      - chipmo-net
+    depends_on:
+      - loki
+
+  grafana:
+    image: grafana/grafana:11.2.2
+    container_name: chipmo-grafana
+    restart: unless-stopped
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_ANALYTICS_REPORTING_ENABLED=false
+      - GF_ANALYTICS_CHECK_FOR_UPDATES=false
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana_data:/var/lib/grafana
+    ports:
+      - "3001:3000"
+    networks:
+      - chipmo-net
+    depends_on:
+      - prometheus
+      - loki
+
+volumes:
+  prometheus_data:
+  loki_data:
+  grafana_data:
+
+networks:
+  # Declared here so the observability overlay can stand alone, but
+  # when composed with docker-compose.yml both files resolve to the
+  # same bridge network.
+  chipmo-net:
+    driver: bridge

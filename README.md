@@ -1,60 +1,94 @@
-# Chipmo Security Camera AI — Хөгжүүлэлтийн бичиг баримт
+# Chipmo Security Camera AI
 
-Энэ фолдер нь **Chipmo Security Camera AI** системийн хөгжүүлэлтийн
-техникийн бичиг баримтуудыг агуулна. Одоогийн систем (FastAPI + YOLO11-pose +
-rule-based behavior detection)-ийг дараагийн түвшинд (Hybrid edge + RAG + VLM +
-auto-learning) хөгжүүлэх төлөвлөгөөг агуулсан.
+**Cloud-hosted shoplift detection SaaS** for retail stores. Ships YOLO11-pose
+behavior detection, RAG + VLM verification, and anonymized cross-customer
+learning — all without requiring customers to buy or install new cameras
+or servers.
 
-## Бичиг баримтын жагсаалт
+> **Архитектур (2026-04-21):** Centralized SaaS default product.
+> Харилцагчийн камерууд өөрчлөгдөхгүй; Chipmo-ийн WireGuard VPN
+> appliance-аар RTSP sub-stream-ийг төв сервер рүү татаж inference хийнэ.
+> No recording by default (≤10s confirmed alert clip only). 3-phase
+> infrastructure: Railway → Cloud GPU → Owned GPU (1000+ cameras).
+> On-prem SKU available as premium option for data-sovereignty customers.
+> See [`docs/decisions/2026-04-21-centralized-saas-no-customer-hardware.md`](./docs/decisions/2026-04-21-centralized-saas-no-customer-hardware.md).
 
-| № | Файл | Агуулга |
-|---|---|---|
-| 01 | [ARCHITECTURE.md](./01-ARCHITECTURE.md) | Одоогийн болон эцсийн архитектурын харьцуулалт |
-| 02 | [ROADMAP.md](./02-ROADMAP.md) | 4 үе шаттай хөгжүүлэлтийн roadmap |
-| 03 | [TECH-SPECS.md](./03-TECH-SPECS.md) | Шинэ feature бүрийн техникийн нарийвчилсан тодорхойлолт |
-| 04 | [EDGE-DEPLOYMENT.md](./04-EDGE-DEPLOYMENT.md) | Edge box архитектур, hardware BOM, суулгалт |
-| 05 | [MIGRATION-PLAN.md](./05-MIGRATION-PLAN.md) | Centralized → Hybrid edge-д шилжих алхам-алхмын план |
-| 06 | [DATABASE-SCHEMA.md](./06-DATABASE-SCHEMA.md) | DB schema-ийн өөрчлөлт, шинэ хүснэгтүүд |
+## Quick links
 
-## Уншлагын дараалал
+- **Full architecture:** [`docs/01-ARCHITECTURE.md`](./docs/01-ARCHITECTURE.md)
+- **Roadmap:** [`docs/02-ROADMAP.md`](./docs/02-ROADMAP.md)
+- **Tech specs:** [`docs/03-TECH-SPECS.md`](./docs/03-TECH-SPECS.md)
+- **Infra strategy (3-phase):** [`docs/04-INFRASTRUCTURE-STRATEGY.md`](./docs/04-INFRASTRUCTURE-STRATEGY.md)
+- **Customer onboarding:** [`docs/05-ONBOARDING-PLAYBOOK.md`](./docs/05-ONBOARDING-PLAYBOOK.md)
+- **Privacy + legal:** [`docs/09-PRIVACY-LEGAL.md`](./docs/09-PRIVACY-LEGAL.md)
+- **Pricing (internal):** [`docs/10-PRICING-BUSINESS.md`](./docs/10-PRICING-BUSINESS.md)
+- **Task board:** [`docs/TASKS.md`](./docs/TASKS.md)
+- **All docs index:** [`docs/README.md`](./docs/README.md)
 
-**Шинэ гишүүн код хийж эхэлж байгаа бол:**
-1. `01-ARCHITECTURE.md` — системийн ерөнхий бүтэц
-2. `02-ROADMAP.md` — яг одоо юу хийж байгаа
-3. `03-TECH-SPECS.md` — өөрийн хариуцсан хэсэгтэй холбоотой section
+## Technology stack
 
-**DevOps / Infrastructure engineer:**
-1. `04-EDGE-DEPLOYMENT.md`
-2. `05-MIGRATION-PLAN.md`
-3. `06-DATABASE-SCHEMA.md`
+- **Backend:** FastAPI (async), PostgreSQL + TimescaleDB, Redis Streams
+- **AI:** YOLO11-pose, ByteTrack, OSNet Re-ID, Qwen2.5-VL via vLLM
+- **Vector DB:** Qdrant (per-tenant isolated + shared behavior taxonomy)
+- **Ingress:** WireGuard VPN appliance (GL.iNet or Raspberry Pi)
+- **Central GPU:** Phase A cloud serverless → Phase B rented RTX 4090 →
+  Phase C owned RTX 5090 / L40S
+- **Frontend:** React 19 + Vite + TailwindCSS v4
+- **Observability:** Prometheus + Grafana + Loki
+- **Orchestration:** Docker Compose → K3s (Phase C)
 
-**Product/Business:**
-1. `01-ARCHITECTURE.md` (comparison table хэсэг)
-2. `02-ROADMAP.md`
+## Product principles
 
-## Бизнесийн үндсэн зорилт
+1. **Hardware-free onboarding** — no camera changes, no customer server.
+2. **Self-improving via shared taxonomy** — cross-customer learning
+   without exposing any tenant's PII.
+3. **Privacy-first** — no recording by default, per-tenant isolation,
+   DPIA compliance with Mongolian data protection law.
+4. **Cost-effective at scale** — economies of shared GPU increase from
+   Phase A to Phase C.
 
-1. **Self-hosted** — Гадаад API-д төлөхгүй, бүх component локал ажиллана
-2. **Self-improving** — Харилцагч нэмэгдэх тусам систем ухаалаг болно
-3. **Cost-effective scale** — Нэг GPU-д олон камер (batched inference)
-4. **Privacy-first** — Монголын хувийн нууцын хууль дагуу
+## Repo layout
 
-## Технологийн stack (target)
+```
+.
+├── shoplift_detector/         # Main FastAPI backend
+│   └── app/
+│       ├── api/               # REST endpoints
+│       ├── ai/                # Detection pipeline
+│       ├── db/                # SQLAlchemy models
+│       └── services/          # Business logic
+├── security-web/              # React dashboard
+├── alembic/                   # DB migrations
+├── observability/             # Prometheus + Grafana config
+├── docs/                      # All development documentation
+│   ├── decisions/             # ADRs
+│   ├── audits/                # Audit reports
+│   └── spikes/                # Technical spikes
+└── tests/                     # Test suite
+```
 
-**Backend:** FastAPI (async), PostgreSQL + TimescaleDB, Redis Streams
-**AI/ML:** YOLO11-pose, ByteTrack, OSNet (Re-ID), Qwen2.5-VL (Ollama)
-**Vector DB:** Qdrant (self-hosted)
-**Edge:** Jetson Orin / RTX 5060 mini PC
-**Central GPU:** RTX 5090 (15-25 харилцагчид)
-**Frontend:** React 19 + Vite + TailwindCSS v4
-**Observability:** Prometheus + Grafana + Loki
-**Orchestration:** Docker Compose (edge), Docker Swarm / K3s (central)
+## Getting started
 
-## Баримт бичгийн статус
+Development setup instructions: see [`CLAUDE.md`](./CLAUDE.md) and
+[`docs/00-AS-IS-INVENTORY.md`](./docs/00-AS-IS-INVENTORY.md).
 
-Бүх бичиг баримт 2026-04-17-д бичигдсэн. Архитектур эсвэл технологи
-өөрчлөгдөх бүрт холбогдох документыг шинэчлэх шаардлагатай.
+Production deployment (Phase A, Railway):
 
-Шинэчлэлт хийсэн тохиолдолд:
-- Commit message-д `docs:` prefix хэрэглэнэ
-- Өөрчлөгдсөн document-ын доод хэсэгт `Updated: YYYY-MM-DD` тэмдэглэ
+```bash
+# Push to Railway project chipmo-prod
+# Services: api, worker, web, postgres, redis, qdrant, wireguard
+```
+
+Onboarding a customer: see [`docs/05-ONBOARDING-PLAYBOOK.md`](./docs/05-ONBOARDING-PLAYBOOK.md).
+
+## Current status
+
+- **Engineering phase 0** (rule-based pilot): shipped
+- **Engineering phase 1** (quick wins + VPN onboarding): in progress
+- **Infra phase A** (Railway): active
+
+See [`docs/TASKS.md`](./docs/TASKS.md) for detailed task tracking.
+
+---
+
+Updated: 2026-04-21

@@ -1,6 +1,7 @@
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import Float, ForeignKey, Integer, String, Text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .base import Base, TimestampMixin
@@ -28,6 +29,11 @@ class Store(Base, TimestampMixin):
 
     # Telegram мэдэгдэл - дэлгүүр бүрт өөр chat_id байж болно
     telegram_chat_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
+
+    # Unified AI/notification settings (JSONB). See
+    # app/schemas/store_settings.py for the authoritative shape. Nullable
+    # until the follow-up migration enforces NOT NULL after dual-write.
+    settings: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
 
     # Relationships
     organization: Mapped["Organization"] = relationship(back_populates="stores")

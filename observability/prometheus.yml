@@ -1,0 +1,35 @@
+# Prometheus scrape config for the Chipmo dev stack.
+# Mounted into the prometheus container by docker-compose.observability.yml.
+#
+# The Chipmo app exposes OpenMetrics at http://app:8000/metrics (T02-09).
+# Port 8000 is what the primary docker-compose.yml exposes on the `app`
+# service, so the scrape target is stable across the two compose files.
+
+global:
+  scrape_interval: 15s
+  scrape_timeout: 10s
+  evaluation_interval: 30s
+  external_labels:
+    cluster: chipmo-dev
+    env: development
+
+scrape_configs:
+  # Scrape Prometheus itself so dashboards can chart scrape health.
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  # Chipmo FastAPI backend.
+  - job_name: chipmo-backend
+    metrics_path: /metrics
+    scheme: http
+    static_configs:
+      - targets: ["app:8000"]
+        labels:
+          service: chipmo-backend
+          component: api
+
+  # Reserved for Phase 7+ edge boxes. Left empty so the job exists but
+  # does not attempt to scrape anything during dev.
+  - job_name: chipmo-edge
+    static_configs: []

@@ -15,14 +15,28 @@ async def list_cameras(
     store_id: int | None = None,
     organization_id: int | None = None,
 ):
+    """Camera listing. Closes H-H3 from T02-12 by scoping the fallback
+    to the caller's organization instead of returning every tenant's
+    cameras to a non-super admin.
+    """
     repo = CameraRepository(db)
+
+    if admin.get("role") == "super_admin":
+        if store_id:
+            return await repo.get_by_store(store_id)
+        if organization_id:
+            return await repo.get_by_organization(organization_id)
+        return await repo.get_all()
+
+    # Non-super admin: never fall through to get_all(). If the caller
+    # asked for another org's data, return empty rather than leaking.
+    admin_org = admin.get("org_id")
+    if organization_id and organization_id != admin_org:
+        return []
     if store_id:
-        cameras = await repo.get_by_store(store_id)
-    elif organization_id:
-        cameras = await repo.get_by_organization(organization_id)
-    else:
-        cameras = await repo.get_all()
-    return cameras
+        return [c for c in await repo.get_by_store(store_id)
+                if c.get("organization_id") == admin_org]
+    return await repo.get_by_organization(admin_org) if admin_org else []
 
 
 @router.post("", response_model=APIResponse)
@@ -85,16 +99,32 @@ async def delete_camera(camera_id: int, admin: SuperAdmin, db: DB):
 
 
 @router.get("/status")
-async def camera_status(user: CurrentUser):
+async def camera_status(user: CurrentUser, db: DB):
     """Return camera status keyed by camera_id so the UI can O(1) lookup.
 
-    Each entry exposes both `is_connected` and its alias `online` so the
-    frontend can read a consistent field without knowing the backend name.
+    Tenant-scoped (H-H6 remediation): non-super users only see statuses
+    for cameras in their organization. The camera_manager itself holds
+    runtime state for every camera, so we filter via the DB camera
+    list before returning.
     """
     from app.services.camera_manager import camera_manager
 
     statuses = camera_manager.get_all_status()
-    return {
-        str(s["camera_id"]): {**s, "online": bool(s.get("is_connected"))}
-        for s in statuses
-    }
+
+    if user.get("role") == "super_admin":
+        visible_ids: set[int] | None = None  # None = show all
+    else:
+        user_org = user.get("org_id")
+        if not user_org:
+            return {}
+        repo = CameraRepository(db)
+        org_cameras = await repo.get_by_organization(user_org)
+        visible_ids = {c["id"] for c in org_cameras}
+
+    result = {}
+    for s in statuses:
+        cam_id = s.get("camera_id")
+        if visible_ids is not None and cam_id not in visible_ids:
+            continue
+        result[str(cam_id)] = {**s, "online": bool(s.get("is_connected"))}
+    return result

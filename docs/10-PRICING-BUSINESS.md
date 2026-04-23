@@ -1,5 +1,11 @@
 # 10 — Pricing & Business Strategy (Internal)
 
+> **Note (2026-04-21):** Hardware-free centralized SaaS model-д
+> шинэчлэгдсэн. Default SKU нь pure SaaS (setup fee минимум, monthly
+> recurring). Edge-box hardware sale нь on-prem SKU-д ("Chipmo Server"
+> branding) retained. See
+> [`decisions/2026-04-21-centralized-saas-no-customer-hardware.md`](./decisions/2026-04-21-centralized-saas-no-customer-hardware.md).
+
 **Анхааруулга:** Энэ документ нь дотоод хэрэглээнд зориулагдсан. Public
 шэар хийх бус. Pricing өөрчлөгдөх бүрт update хийнэ.
 
@@ -7,19 +13,37 @@
 
 ## 1. Business model
 
-**Type:** B2B SaaS + Hardware (hybrid)
+**Type:** B2B SaaS (default) + On-prem SKU (optional, premium tier)
 
-**Revenue streams:**
-1. **Setup / Hardware fee** (one-time) — edge box худалдах
-2. **Monthly subscription** (recurring) — камер тоон дахь tier-ээр
-3. **Professional services** (project) — custom integration, onsite training
-4. **Expansion** — нэмэлт камер / шинэ store
-5. **API access** (future) — third-party integration
+**Default product — Centralized SaaS:**
+- VPN appliance (~$40-60 hardware cost, customer keeps)
+- Monthly recurring subscription per camera
+- Zero-CAPEX onboarding for customer
+- Chipmo scales infrastructure across all customers
 
-**Why hybrid (not pure SaaS):**
-- Hardware margin cost-ийг эргүүлэн нөхөж margin сайжруулна
-- Харилцагч өөр хаана ч явахгүй (edge box нь Chipmo стакд lock хийгдсэн)
-- Upfront cash эхний 6 сарын ops-г нөхнө
+**Optional product — On-prem ("Chipmo Server"):**
+- Customer-owned server ($800-1500 hardware pass-through + margin)
+- Monthly subscription (reduced)
+- For customers who require data to stay on-premises
+- See [`decisions/2026-04-21-drop-edge-box-hybrid-architecture.md`](./decisions/2026-04-21-drop-edge-box-hybrid-architecture.md)
+
+### 1.1 Revenue streams (SaaS default)
+
+1. **Onboarding fee** (one-time, minimal) — VPN appliance $80-150 margin
+2. **Monthly subscription** (primary recurring) — per-camera tier pricing
+3. **Professional services** (project) — custom integration, training
+4. **Expansion** — additional cameras / new stores
+5. **Add-ons** — priority support, extended retention, fine-tuned model
+6. **API access** (Phase 3+) — third-party integration fee
+
+### 1.2 Why SaaS default (not hardware-heavy)
+
+- **Fast sales cycle:** VPN appliance setup in 1-2 цаг, no install visit
+- **Scale moat:** Multi-tenant learning (shared behavior taxonomy) only
+  works if Chipmo has the data
+- **LTV:** Pure SaaS compounds ARPU vs. one-time hardware sale
+- **Low CAPEX customer barrier:** Retail margin бага, upfront $3000+
+  hardware purchase тодорхой дарангуйлагч
 
 ---
 
@@ -31,19 +55,21 @@
 
 | Зүйл | Үнэ |
 |---|---|
-| Setup + Edge Box (compact) | 2,900,000₮ |
-| Monthly (4 камер багтана) | 350,000₮/сар |
-| Нэмэлт камер (5-аас дээш) | 60,000₮/сар |
+| Onboarding fee (VPN appliance + setup) | 290,000₮ (one-time) |
+| Monthly base (up to 4 камер) | 280,000₮/сар |
+| Нэмэлт камер (5-аас дээш) | 50,000₮/сар |
 | Гэрээний хугацаа (minimum) | 12 сар |
 
 **Features:**
 - Rule-based + RAG detection
 - Telegram alerts
 - Dashboard access (1 user)
-- 30-хоногийн clip retention
+- 30-хоногийн alert clip retention
 - Email support (business hours)
+- No recording (live inference only)
 
-**Target margin:** 40% on hardware, 65% on monthly
+**Per-camera effective cost:** ~70,000₮/сар (4 cam).
+**Target margin:** ~80% on monthly (Phase B), ~90% on monthly (Phase C).
 
 ### 2.2 Business — Дундаж дэлгүүр / жижиг chain
 
@@ -51,9 +77,9 @@
 
 | Зүйл | Үнэ |
 |---|---|
-| Setup + Edge Box (standard) | 4,500,000₮ |
-| Monthly (8 камер багтана) | 600,000₮/сар |
-| Нэмэлт камер | 55,000₮/сар |
+| Onboarding fee (VPN appliance + setup + tuning) | 450,000₮ (one-time) |
+| Monthly base (up to 8 камер) | 480,000₮/сар |
+| Нэмэлт камер | 45,000₮/сар |
 | Гэрээний хугацаа | 12 сар |
 
 **Features:**
@@ -65,7 +91,8 @@
 - Phone support (12 цагийн дотор хариу)
 - Monthly analytics report
 
-**Target margin:** 45% on hardware, 70% on monthly
+**Per-camera effective cost:** ~60,000₮/сар (8 cam).
+**Target margin:** ~82% on monthly (Phase B), ~92% on monthly (Phase C).
 
 ### 2.3 Enterprise — Том chain
 
@@ -73,83 +100,133 @@
 
 | Зүйл | Үнэ |
 |---|---|
-| Setup + Edge Box (high-end) | 7,500,000₮ |
-| Monthly | 45,000₮/камер/сар |
+| Onboarding fee (multi-site, VPN mesh) | 1,200,000₮ (one-time) |
+| Monthly | 38,000₮/камер/сар (volume-scaled) |
 | Гэрээний хугацаа | 24 сар (volume discount) |
 
 **Features:**
 - Everything in Business
 - Cross-store dashboard
-- Custom behavior rules
+- Custom behavior rules (per-tenant LoRA fine-tune future)
 - API access (webhook + REST)
 - SLA: 99.5% uptime, 4-цагийн phone response
 - Dedicated account manager
 - Quarterly business review
-- On-site annual maintenance
+- Priority Re-ID and VLM compute lane
 
-**Target margin:** 50% on hardware, 75% on monthly
+**Target margin:** ~85% on monthly (Phase B), ~93% on monthly (Phase C).
 
-### 2.4 Add-ons
+### 2.4 On-prem SKU (optional, premium)
+
+For customers with strict data sovereignty requirements:
+
+| Зүйл | Үнэ |
+|---|---|
+| Chipmo Server (hardware pass-through + margin) | 3,800,000₮ - 8,500,000₮ (spec dependent) |
+| Installation + tuning | 800,000₮ (one-time) |
+| Monthly (software + support) | 250,000₮/сар (flat, up to 8 камер) |
+| Camera overage | 30,000₮/камер/сар |
+| Гэрээний хугацаа | 24 сар minimum |
+
+**Trade-off disclosed to customer:** On-prem-д shared behavior
+taxonomy feature ажиллахгүй (no central). Model improvement slower.
+Upgrade pull-based. Used ONLY when privacy/compliance demands it.
+
+### 2.5 Add-ons
 
 | Add-on | Үнэ | Description |
 |---|---|---|
-| Additional edge box | 2,900,000₮-7,500,000₮ | Шинэ store |
+| Additional store (VPN appliance included) | 290,000₮ + tier base | Шинэ store |
+| 4G fallback router | 250,000₮ (one-time) | Internet dropout insurance |
 | Face blur opt-out | 50,000₮/сар | Хэрэв хууль зөвшөөрнө |
-| Custom behavior rule | 1,500,000₮ | One-time development |
+| Custom behavior rule | 1,500,000₮ | One-time engineering |
 | Onsite training | 500,000₮/сессийн | Харилцагчийн team-д |
 | Priority support (24/7) | 200,000₮/сар | Non-enterprise-д |
 | Extended clip retention (90 хоног) | 100,000₮/сар | Default 30 хоног |
+| Custom fine-tuned model (LoRA) | 2,000,000₮ setup + 150,000₮/сар | Enterprise + Business VIP |
 
 ---
 
-## 3. Unit economics
+## 3. Unit economics (SaaS default, per infra phase)
 
-### 3.1 Per-customer (Business tier, 8 камер)
+Per-camera-per-month ops cost нь
+[`04-INFRASTRUCTURE-STRATEGY.md`](./04-INFRASTRUCTURE-STRATEGY.md) §5-д
+тусгагдсан phase-ээс хамаарна:
 
-**Эхний жилийн revenue:**
-- Setup: 4,500,000₮
-- Monthly: 600,000₮ × 12 = 7,200,000₮
-- **Total Y1: 11,700,000₮**
+| Phase | Per-camera ops cost (Chipmo) | Per-camera pricing (Business avg 60k₮) | Gross margin per camera |
+|---|---|---|---|
+| A (Railway + external GPU) | ~14,000₮/cam (USD $5) | 60,000₮ | ~77% |
+| B (RunPod RTX 4090) | ~7,500₮/cam (USD $2.7) | 60,000₮ | ~87% |
+| C (owned RTX 5090) | ~2,500₮/cam (USD $0.9) | 60,000₮ | ~96% |
 
-**Эхний жилийн cost:**
-- Hardware BOM: 3,450,000₮
-- Install labor (4 цаг × 2 хүн): 160,000₮
-- Хүргэлт: 50,000₮
-- **Total one-time: 3,660,000₮**
-- Ops (per month):
-  - Central GPU (25% of RTX 5090 = 1/4 share): 40,000₮
-  - Server / hosting: 25,000₮
-  - Support (10% of 1 engineer): 200,000₮
-  - **Monthly: 265,000₮/сар = 3,180,000₮ жил**
+### 3.1 Per-customer Y1 (Business tier, 8 камер, Phase B)
 
-**Y1 Gross profit:**
-- 11,700,000 - 3,660,000 - 3,180,000 = **4,860,000₮**
-- Gross margin Y1: 41.5%
+**Revenue:**
+- Onboarding fee: 450,000₮
+- Monthly: 480,000₮ × 12 = 5,760,000₮
+- **Total Y1: 6,210,000₮**
 
-**Y2+ (no setup):**
-- Revenue: 7,200,000₮
-- Cost: 3,180,000₮ + hardware amortization (1,150,000₮/жил × 3 жил)
-- Gross profit: **2,870,000₮**
-- Gross margin Y2+: 39.9%
+**Cost:**
+- VPN appliance BOM + shipping: 220,000₮ (resell margin included in onboarding fee)
+- Setup labor (remote + 1h phone): 100,000₮
+- Ops (Phase B, 8 камер × 7,500₮ × 12): 720,000₮
+- Customer success (5% engineer time): 240,000₮
+- **Total Y1: 1,280,000₮**
 
-**LTV (5 жил):** 4.86 + 2.87 × 4 = **16.34M₮**
+**Y1 Gross profit:** 6,210,000 - 1,280,000 = **4,930,000₮**
+Gross margin Y1: **79.4%**
 
-**CAC target:** < 3M₮ (LTV/CAC ratio 5:1+)
+### 3.2 Per-customer Y2+ (no onboarding)
 
-### 3.2 Break-even analysis
+- Revenue: 5,760,000₮
+- Cost (Phase B): 720,000 + 240,000 = 960,000₮
+- Gross profit: **4,800,000₮**
+- Gross margin Y2+: **83.3%**
 
-**Fixed monthly costs (assumed):**
-- 1 Founder salary: 0₮ (equity)
+**Phase C-руу шилжсэн үед:**
+- Ops: 240,000₮ (vs. 720,000₮)
+- Gross profit: **5,280,000₮ / year**
+- Gross margin: **91.7%**
+
+### 3.3 LTV + CAC (SaaS model)
+
+**LTV (5 year estimate, Phase B → C transition at year 2):**
+- Y1: 4.93M₮
+- Y2-5 (Phase C): 5.28M × 4 = 21.12M
+- **LTV = 26.05M₮**
+
+**CAC target:** <4M₮ (LTV/CAC ratio 6.5:1+)
+
+### 3.4 Break-even analysis (SaaS)
+
+**Fixed monthly costs (Phase A-B, 2026 team size):**
+- Founder salary: 0₮ (equity)
 - 1 Engineer: 4,000,000₮/сар
 - Office + misc: 500,000₮
 - Marketing: 1,000,000₮
-- **Total: 5,500,000₮/сар = 66,000,000₮/жил**
+- Infra base (Phase B): 1,500,000₮
+- **Total: 7,000,000₮/сар = 84,000,000₮/жил**
 
-**Break-even харилцагчийн тоо (Business tier):**
-- Жилийн per-customer gross: 4,860,000₮
-- **66M / 4.86M = 14 харилцагч** (эхний жилдээ)
+**Break-even (Business tier avg):**
+- Per-customer Y1 gross: 4,930,000₮
+- Annual margin per steady-state customer (Y2+, Phase B): 4,800,000₮
+- Break-even = 84M / 4.8M = **~18 paying customers** steady-state
 
-**Mk:** 14 paying харилцагчид хүрсний дараа profitable.
+**Phase C transition** дээр infra base ~500,000₮/сар болох тул
+break-even ~15 customers руу уруудна.
+
+### 3.5 Revenue → MRR projection (planning)
+
+| Month | Customers | MRR | Cumulative ARR | Phase |
+|---|---|---|---|---|
+| M3 | 1 | 0.48M | 5.76M | A |
+| M6 | 3 | 1.44M | 17.28M | A→B |
+| M12 | 12 | 5.76M | 69.12M | B |
+| M18 | 30 | 14.4M | 172.8M | B |
+| M24 | 60 | 28.8M | 345.6M | B→C |
+| M36 | 150 | 72M | 864M | C |
+
+Aggressive but achievable if 2026 Q2-Q3-д product-market fit баталгаажсан.
 
 ---
 
@@ -418,10 +495,12 @@ Founder-д харуулах гол KPI (weekly):
 
 ## Холбоотой документ
 
-- [01-ARCHITECTURE.md](./01-ARCHITECTURE.md) (differentiation: edge-first, self-hosted)
-- [04-EDGE-DEPLOYMENT.md](./04-EDGE-DEPLOYMENT.md) (hardware BOM)
-- [09-PRIVACY-LEGAL.md](./09-PRIVACY-LEGAL.md) (customer agreement)
+- [01-ARCHITECTURE.md](./01-ARCHITECTURE.md) (differentiation: SaaS centralized, VPN ingress)
+- [04-INFRASTRUCTURE-STRATEGY.md](./04-INFRASTRUCTURE-STRATEGY.md) (cost per camera per phase)
+- [05-ONBOARDING-PLAYBOOK.md](./05-ONBOARDING-PLAYBOOK.md) (VPN appliance + camera config)
+- [09-PRIVACY-LEGAL.md](./09-PRIVACY-LEGAL.md) (customer agreement, DPIA)
+- [decisions/2026-04-21-centralized-saas-no-customer-hardware.md](./decisions/2026-04-21-centralized-saas-no-customer-hardware.md)
 
 ---
 
-Updated: 2026-04-17
+Updated: 2026-04-21

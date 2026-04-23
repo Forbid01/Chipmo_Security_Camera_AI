@@ -1,11 +1,12 @@
 import asyncio
 import time
+from typing import Annotated
 
 import cv2
 import numpy as np
-from app.core.security import CurrentUser
+from app.core.tenancy import require_camera_access, require_store_access
 from app.services.camera_manager import camera_manager
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 
 router = APIRouter()
@@ -105,8 +106,15 @@ async def generate_store_frames(store_id: int):
 
 
 @router.get("/feed/{camera_id}")
-async def video_feed(camera_id: int, user: CurrentUser):
-    """Нэг камерын live stream (authenticated)."""
+async def video_feed(
+    camera_id: int,
+    camera: Annotated[dict, Depends(require_camera_access)],
+):
+    """Нэг камерын live stream (authenticated + tenant-scoped).
+
+    `require_camera_access` confirms the camera belongs to the caller's
+    organization and 404s for cross-tenant access. Closes H-H7.
+    """
     if not camera_manager.has_camera(camera_id):
         raise HTTPException(status_code=404, detail="Камер бүртгэгдээгүй")
     return StreamingResponse(
@@ -116,8 +124,15 @@ async def video_feed(camera_id: int, user: CurrentUser):
 
 
 @router.get("/store/{store_id}")
-async def store_video_feed(store_id: int, user: CurrentUser):
-    """Дэлгүүрийн бүх камерыг grid-д нэгтгэсэн stream."""
+async def store_video_feed(
+    store_id: int,
+    store: Annotated[dict, Depends(require_store_access)],
+):
+    """Дэлгүүрийн бүх камерыг grid-д нэгтгэсэн stream.
+
+    `require_store_access` confirms the store belongs to the caller's
+    organization. Closes H-H8.
+    """
     return StreamingResponse(
         generate_store_frames(store_id),
         media_type="multipart/x-mixed-replace; boundary=frame",

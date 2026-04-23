@@ -30,6 +30,18 @@ class Settings(BaseSettings):
     DB_HOST: str = "127.0.0.1"
     DB_PORT: int = 5432
 
+    # TimescaleDB. See docs/spikes/timescaledb-integration.md — disabled on
+    # Railway's managed Postgres, enabled on self-hosted central. When true,
+    # the guarded migration converts eligible tables to hypertables.
+    TIMESCALEDB_ENABLED: bool = False
+
+    # Tenant isolation (T1-04). When true, the SQLAlchemy event hook
+    # pins `app.current_tenant_id` per request and RLS policies enforce
+    # per-row visibility. When false, the hook sets
+    # `app.bypass_tenant='on'` at session start so legacy writers keep
+    # working during the rollout window.
+    TENANCY_RLS_ENFORCED: bool = False
+
     # Telegram
     TELEGRAM_TOKEN: str | None = None
     TELEGRAM_CHAT_ID: str | None = None
@@ -89,6 +101,27 @@ class Settings(BaseSettings):
 
     # Sentry
     SENTRY_DSN: str | None = None
+
+    # Transactional email (Resend) — T2-02. When unset, the handler
+    # wires a `RecordingEmailSender` so dev/staging signups still
+    # work without live email delivery.
+    RESEND_API_KEY: str | None = None
+    EMAIL_FROM: str = "Sentry <no-reply@sentry.mn>"
+
+    # Twilio SMS — T2-03. All three fields must be set for SMS OTP to
+    # activate. Missing any falls through to email-only.
+    TWILIO_ACCOUNT_SID: str | None = None
+    TWILIO_AUTH_TOKEN: str | None = None
+    TWILIO_FROM_NUMBER: str | None = None
+
+    # PostHog server-side capture (T2-09). Unset → events go to the
+    # null recorder (no network I/O).
+    POSTHOG_API_KEY: str | None = None
+    POSTHOG_HOST: str = "https://app.posthog.com"
+
+    # Live chat widget (T2-11). Unset → the onboarding pages do not
+    # load the widget script.
+    CRISP_WEBSITE_ID: str | None = None
 
     @field_validator("ALLOWED_ORIGINS", mode="before")
     @classmethod

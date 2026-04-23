@@ -1,5 +1,12 @@
 # 03 — Техникийн тодорхойлолтууд (Tech Specs)
 
+> **Note (2026-04-21):** Бүх per-component spec centralized SaaS
+> архитектурт тааруулсан. Per-tenant isolation section 5 (OSNet) ба
+> section 6 (RAG)-д хамаарна. §12 "Edge-Central Sync Protocol"-г
+> retired болгож §12-15-д шинэ section-ууд нэмсэн (VPN ingest,
+> VLM batching, shared taxonomy). See
+> [`decisions/2026-04-21-centralized-saas-no-customer-hardware.md`](./decisions/2026-04-21-centralized-saas-no-customer-hardware.md).
+
 Компонент бүрийн нарийн техник шаардлагa, interface, код байрлал,
 тестлэх хуурай шалгуур.
 
@@ -759,57 +766,287 @@ async def submit_label(case_id: UUID, label: LabelInput):
 
 ---
 
-## 12. Edge-Central Sync Protocol
+## 12. VPN Ingest Layer (RTSP over WireGuard)
 
 ### Зорилго
-Харилцагчийн edge box-д хууч мэдээлэлтэй ажиллахаас хамгаалах.
 
-### Endpoints (Central)
+Харилцагчийн камерын sub-stream-ийг internet дээгүүр Chipmo
+инфраструктурд хуулсаар safe, low-overhead аргаар татах.
 
-```
-POST /api/edge/register
-  → edge_box-ийг бүртгэнэ, token буцаана
-
-POST /api/edge/heartbeat
-  → edge status, metrics
-
-POST /api/edge/alerts
-  → new alert + clip upload
-
-GET /api/edge/sync-pack
-  → latest weights + Qdrant snapshot URL
-
-POST /api/edge/feedback-upload
-  → user labels (if any collected locally)
-```
-
-### Sync pack structure
+### Architecture
 
 ```
-sync_pack_{store_id}_{version}.tar.gz
-├── manifest.json
-├── weights.json          # behavior signal weights
-├── detection_config.yaml # adaptive thresholds
-├── qdrant_snapshot.bin   # store-specific case DB
-├── vlm_prompts.yaml      # any new prompt templates
-└── signature.sig         # HMAC-SHA256
+Customer LAN          WireGuard tunnel         Chipmo hub
+[Camera]──RTSP───►[VPN appliance]──UDP 51820──►[Hub]──►ingest worker
+                    (WG peer)                   (WG)
 ```
 
-### Rollout
+- **Hub:** WireGuard kernel module-тай Linux server. Phase A: Railway
+  container (udp 51820 exposed). Phase B+: native kernel WireGuard
+  дээр GPU box.
+- **Peer:** Customer-д суусан GL.iNet router эсвэл Raspberry Pi, `wg0`
+  interface дээр ssh-гүй configured.
+- **Address plan:** Hub = `10.99.0.1/16`. Peer subnet = `10.100.{octet}.0/29`
+  per tenant. Inter-peer traffic блоклогдсон (`iptables -P FORWARD DROP`
+  + per-peer ACCEPT rule).
 
-- Edge pulls sync pack weekly
-- Atomic swap (download → verify → replace)
-- Rollback if validation fails
+### Peer provisioning
+
+```bash
+# Chipmo provisioning CLI
+./tools/ops-cli/provision-vpn-peer.sh \
+  --tenant-id <uuid> \
+  --camera-count <n>
+
+# Outputs:
+# - /etc/wireguard/peers/<tenant>.conf  (hub side config fragment)
+# - onboarding/<tenant>/wg0.conf        (customer side config)
+# - onboarding/<tenant>/qr.png          (mobile scan)
+# - ... atomically commits via `wg syncconf`
+```
+
+**Key rotation:** Per-tenant keypair rotate-оор. Default 180 хоногт.
+Revoke: `wg set wg0 peer <pubkey> remove` + `wg syncconf`.
+
+### Ingest worker
+
+```python
+# shoplift_detector/app/ingest/rtsp_worker.py
+
+class TenantRTSPWorker:
+    """One instance per tenant; manages N camera streams."""
+
+    def __init__(self, tenant_id: UUID, cameras: list[Camera]):
+        self.tenant_id = tenant_id
+        self.decoder = NVDECBatchDecoder(max_streams=len(cameras))
+        self.fps_governor = FPSGovernor(tenant_id)
+
+    async def run(self):
+        while self._running:
+            batch = await self.decoder.next_batch()
+            # (camera_id, frame_id, tensor) tuples
+            await self.redis_stream.xadd(
+                f"frames:{self.tenant_id}",
+                batch,
+                maxlen=1000,
+            )
+```
+
+### Bandwidth monitoring
+
+```python
+# Prometheus metrics
+tenant_ingest_bitrate_bits_per_second{tenant_id="..."}
+tenant_ingest_packet_loss_ratio{tenant_id="..."}
+tenant_ingest_rtt_ms{tenant_id="..."}
+
+# Alertmanager rules
+- alert: TenantUplinkLow
+  expr: tenant_ingest_bitrate_bits_per_second < 1000000
+  for: 120s
+```
+
+### Offline/disconnect handling
+
+VPN tunnel down bol:
+
+1. Peer-ын local ring buffer (SD card / Pi storage) 24h хүртэл keep.
+2. Tunnel recovered → backfill upload, frames tagged with `offline_period=true`.
+3. Alert dispatch `delayed=true` flag-тай — Telegram message-д
+   "⚠ Internet тасалдсан үед илрүүлсэн event" гэж тэмдэглэнэ.
 
 ### Acceptance
 
-- Sync doesn't interrupt alert pipeline
-- 3-version backward compatibility
-- Signature verification 100%
+- [ ] Handshake <5 сек after `wg-quick up`.
+- [ ] RTT <150ms from customer LAN → Chipmo hub (UB within-country).
+- [ ] Sustained 2 Mbps bidirectional without packet loss >0.5%.
+- [ ] Inter-peer traffic attempts blocked (iptables LOG + DROP).
+- [ ] Key revocation <30 сек after script run.
 
 ---
 
-## 13. Privacy Components
+## 13. VLM Continuous Batching (vLLM)
+
+### Зорилго
+
+Qwen2.5-VL 7B inference-ийг олон-tenant traffic-д high-throughput горимоор
+ажиллуулах. Single-request latency-ээс багахан алдахын оронд throughput
+3-5x нэмнэ.
+
+### Deployment
+
+```yaml
+# infra/vllm-server.yml
+services:
+  vllm:
+    image: vllm/vllm-openai:v0.7.0
+    command:
+      - --model Qwen/Qwen2.5-VL-7B-Instruct
+      - --max-model-len 8192
+      - --max-num-seqs 32
+      - --gpu-memory-utilization 0.55   # share with YOLO
+      - --dtype float16
+      - --enable-lora   # per-tenant adapter (future)
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              capabilities: [gpu]
+              count: 1
+```
+
+### Client integration
+
+```python
+# shoplift_detector/app/ai/vlm_client.py
+
+class VLMClient:
+    def __init__(self, base_url: str):
+        self.client = openai.AsyncOpenAI(
+            base_url=f"{base_url}/v1",
+            api_key="not-used",  # vLLM local
+        )
+
+    async def verify_event(self, event: Event, clip_frames: list[np.ndarray]) -> VLMVerdict:
+        prompt = build_prompt(event, clip_frames, tenant_ctx=event.tenant_id)
+        resp = await self.client.chat.completions.create(
+            model="Qwen/Qwen2.5-VL-7B-Instruct",
+            messages=prompt,
+            max_tokens=256,
+            temperature=0.1,
+        )
+        return parse_verdict(resp.choices[0].message.content)
+```
+
+### Concurrency model
+
+- `max_num_seqs=32` — 32 concurrent decode within GPU.
+- Client pool size 8-16 per ingest worker.
+- Per-tenant rate limit 4 req/sec (soft), 8 req/sec (hard).
+- Tenant VIP (Enterprise tier): priority queue via `logit_bias` tuning (optional future).
+
+### Fallback
+
+VLM unavailable (cold start, OOM, timeout 10s):
+1. Serve rule+RAG verdict instead.
+2. Event tagged `vlm_fallback=true`.
+3. Alerting continues — degraded but functional.
+
+### Acceptance
+
+- [ ] P50 latency <800ms, P95 <2 сек @ 2 req/sec sustained.
+- [ ] GPU utilization 60-75% during peak.
+- [ ] Failed VLM → fallback path activates in <500ms.
+- [ ] Per-tenant rate limit metric exposed.
+
+---
+
+## 14. Shared Behavior Taxonomy Collection
+
+### Зорилго
+
+Cross-tenant learning-ийг хуулийн хүрээнд хэрэгжүүлэх. Identity-гүй
+pose + temporal embedding-ыг бүх tenant-д хуваалцаж, "хулгайлах
+загвар"-ын коллектив санг баяжуулах.
+
+### Qdrant schema
+
+```python
+# Collection: behavior_taxonomy_v1 (SHARED across tenants)
+{
+    "id": UUID,
+    "vector": [512],  # pose trajectory embedding (MotionBERT-style)
+    "payload": {
+        "pattern_type": "loitering_theft" | "distraction_team" | "staff_restock" | ...,
+        "confirmed_by_tenant_count": int,  # not which tenants
+        "first_seen_at": ISO8601,
+        "last_reinforced_at": ISO8601,
+        "pose_feature_dim": 512,
+        "temporal_window_sec": int,
+        "anonymization_version": "v1",
+        # NO tenant_id, NO person_reid_id, NO raw image
+    }
+}
+```
+
+### Write path (anonymization)
+
+```python
+# shoplift_detector/app/ai/taxonomy_writer.py
+
+def anonymize_and_write(event: ConfirmedAlert) -> None:
+    """Only called on VLM-confirmed alert + user-labeled True."""
+
+    # 1. Extract pose trajectory (last 150 frames of keypoints)
+    pose_seq = event.pose_sequence  # shape: (150, 17, 3)
+
+    # 2. Strip any identity info — no bbox, no image, no color
+    pose_seq_normalized = normalize_to_torso(pose_seq)
+
+    # 3. Temporal embedding
+    vec = motionbert_encoder(pose_seq_normalized)  # (512,)
+
+    # 4. Pattern type from VLM verdict + rule labels
+    pattern = classify_pattern(event.vlm_verdict, event.rule_signals)
+
+    # 5. Check if similar pattern already exists
+    similar = qdrant.search("behavior_taxonomy_v1", vec, limit=1)
+    if similar and similar[0].score > 0.92:
+        # Reinforce existing
+        qdrant.set_payload(similar[0].id, {
+            "confirmed_by_tenant_count": similar[0].payload["count"] + 1,
+            "last_reinforced_at": now(),
+        })
+    else:
+        # New pattern
+        qdrant.upsert("behavior_taxonomy_v1", vec, pattern_metadata)
+
+    # Tenant opt-out check
+    if event.tenant.shared_taxonomy_optout:
+        return  # Abort write
+```
+
+### Read path (in RAG Layer 2)
+
+```python
+# During Layer 2 RAG check
+results = await qdrant.search_batch([
+    ("tenant_{tid}_case_memory", event_embedding, 5),   # tenant-private
+    ("behavior_taxonomy_v1", pose_embedding, 5),        # shared
+])
+
+# Score blending
+final_score = 0.6 * tenant_match_score + 0.4 * shared_pattern_score
+```
+
+### Isolation guarantees
+
+- Read-only from the outside (app service account has per-tenant RBAC).
+- Writes require `anonymization_version` metadata + pass anonymization
+  test harness (`tests/test_taxonomy_anonymization.py`).
+- Audit log: every write → `audit_log.action = 'taxonomy_write'`.
+- Never references `tenant_id` anywhere in the payload.
+
+### Tenant opt-out
+
+- Default: **opt-in** (new tenant contributes).
+- MSA-д tick-box "Share anonymized patterns to improve the service" DA.
+- Opt-out-тай tenant: никогда ne writes. Reads нь хэвээр зөвшөөрөгдсөн.
+  Rationale: Opt-out tenant нь шинэ шинэ tenant-аас ашиг хүртэнэ,
+  ийм asymmetry contract-д тодорхойлно.
+
+### Acceptance
+
+- [ ] Taxonomy anonymization test suite 100% pass (no `tenant_id`,
+  no `person_*` in any payload).
+- [ ] Dual-query (per-tenant + shared) p50 latency <100ms.
+- [ ] Opt-out flag disables write path (tested).
+- [ ] New pattern write triggers audit log entry.
+
+---
+
+## 15. Privacy Components
 
 ### Face blur (per-store toggle)
 
@@ -863,9 +1100,17 @@ CREATE TABLE audit_log (
 
 - [01-ARCHITECTURE.md](./01-ARCHITECTURE.md)
 - [02-ROADMAP.md](./02-ROADMAP.md)
-- [04-EDGE-DEPLOYMENT.md](./04-EDGE-DEPLOYMENT.md)
-- [06-DATABASE-SCHEMA.md](./06-DATABASE-SCHEMA.md)
+- [04-INFRASTRUCTURE-STRATEGY.md](./04-INFRASTRUCTURE-STRATEGY.md) — infrastructure phase A/B/C
+- [05-ONBOARDING-PLAYBOOK.md](./05-ONBOARDING-PLAYBOOK.md) — VPN + camera setup
+- [06-DATABASE-SCHEMA.md](./06-DATABASE-SCHEMA.md) — per-tenant + shared collection schema
+- [09-PRIVACY-LEGAL.md](./09-PRIVACY-LEGAL.md) — Anonymization policy
+- [decisions/2026-04-21-centralized-saas-no-customer-hardware.md](./decisions/2026-04-21-centralized-saas-no-customer-hardware.md) — architectural decision
+
+### Superseded
+
+- `04-EDGE-DEPLOYMENT.md` — hybrid edge-box BOM (on-prem SKU optional)
+- §12 "Edge-Central Sync Protocol" from prior version (removed)
 
 ---
 
-Updated: 2026-04-20
+Updated: 2026-04-21

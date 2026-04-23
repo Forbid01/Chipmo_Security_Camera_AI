@@ -37,6 +37,16 @@ AsyncSessionLocal = async_sessionmaker(
     expire_on_commit=False,
 )
 
+# T02-25: Install the tenancy `after_begin` event listener once the
+# sessionmaker is built. The handler reads ContextVars populated by
+# `app.core.tenancy_context` and issues `SET LOCAL app.current_org_id`
+# + `SET LOCAL app.bypass_tenant` against Postgres connections. SQLite
+# is a no-op. Kept as a module-level side-effect so every code path
+# that uses the app's DB session inherits the hook.
+from app.db.tenancy_events import install_tenancy_event_hook  # noqa: E402
+
+install_tenancy_event_hook()
+
 async def get_db() -> AsyncSession:
     async with AsyncSessionLocal() as session:
         try:

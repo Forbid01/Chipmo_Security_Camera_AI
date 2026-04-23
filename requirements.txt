@@ -37,6 +37,7 @@ requests>=2.31.0
 # --- Logging & Monitoring ---
 structlog>=24.0
 sentry-sdk[fastapi]
+prometheus-client>=0.20
 
 # --- Testing ---
 pytest

@@ -40,9 +40,12 @@ from app.api.v1.cameras import (  # noqa: E402
     update_camera,
 )
 from app.core.config import ALERTS_DIR, settings  # noqa: E402
+from app.core.deprecation import DeprecationHeadersMiddleware  # noqa: E402
 from app.core.logging import get_logger, setup_logging  # noqa: E402
+from app.core.rate_limiting import limiter  # noqa: E402
 from app.core.security import (  # noqa: E402
     CurrentUser,
+    SuperAdmin,
     create_access_token,
     get_password_hash,
     set_auth_cookie,
@@ -69,9 +72,9 @@ from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse  # noqa: E402
 from fastapi.security import OAuth2PasswordRequestForm  # noqa: E402
 from fastapi.staticfiles import StaticFiles  # noqa: E402
-from slowapi import Limiter  # noqa: E402
+from slowapi import _rate_limit_exceeded_handler  # noqa: E402
 from slowapi.errors import RateLimitExceeded  # noqa: E402
-from slowapi.util import get_remote_address  # noqa: E402
+from slowapi.middleware import SlowAPIMiddleware  # noqa: E402
 from starlette.middleware.base import BaseHTTPMiddleware  # noqa: E402
 
 setup_logging()
@@ -275,18 +278,33 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-limiter = Limiter(key_func=get_remote_address)
 app.state.limiter = limiter
 
 
 @app.exception_handler(RateLimitExceeded)
 async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
-    return JSONResponse(
+    # Delegate to slowapi's stock handler so X-RateLimit-* + Retry-After
+    # headers are populated per docs/07-API-SPEC.md §7. Then overlay a
+    # Mongolian-language body so the client message stays consistent
+    # with the rest of the API.
+    response = _rate_limit_exceeded_handler(request, exc)
+    response = JSONResponse(
         status_code=429,
         content={"status": "error", "message": "Хэт олон хүсэлт. Түр хүлээнэ үү."},
+        headers=dict(response.headers),
     )
+    return response
 
 
+# Propagates X-RateLimit-* headers from @limiter.limit(...) decorated
+# endpoints to the outbound response. Must be added before other
+# middlewares that re-wrap the response, so the headers survive.
+app.add_middleware(SlowAPIMiddleware)
+# Legacy-route deprecation headers per docs/07-API-SPEC.md §9. Legacy
+# root endpoints (/token, /alerts, /video_feed, etc.) pick up the
+# Deprecation / Sunset / Link: rel="successor-version" headers
+# automatically via path map in app.core.deprecation.
+app.add_middleware(DeprecationHeadersMiddleware)
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(
     CORSMiddleware,
@@ -299,6 +317,20 @@ app.add_middleware(
 app.mount("/static", StaticFiles(directory=ALERTS_DIR), name="static")
 
 app.include_router(api_router)
+
+
+# Root-level /metrics so Prometheus scrapers hit the conventional path
+# without a rewrite. The same endpoint is also available under
+# /api/v1/metrics for dashboards that target the versioned surface.
+from app.api.v1.metrics import metrics_endpoint as _metrics_endpoint  # noqa: E402
+
+app.add_api_route(
+    "/metrics",
+    _metrics_endpoint,
+    methods=["GET"],
+    include_in_schema=False,
+    tags=["Observability"],
+)
 
 
 # --- Legacy endpoints (backward compat with frontend) ---
@@ -425,14 +457,19 @@ async def _legacy_gen_frames(camera_type: str):
 
 
 @app.get("/video_feed")
-async def legacy_video_feed():
+async def legacy_video_feed(admin: SuperAdmin):
+    """Legacy demo stream — predates the tenant model and maps to hard
+    coded preset camera ids. Gated behind SuperAdmin per T02-21 to close
+    the H-H15 cross-tenant hazard from the T02-12 audit.
+    """
     return StreamingResponse(
         _legacy_gen_frames("mac"), media_type="multipart/x-mixed-replace; boundary=frame"
     )
 
 
 @app.get("/video_feed/{camera_id}")
-async def legacy_video_feed_by_id(camera_id: str):
+async def legacy_video_feed_by_id(camera_id: str, admin: SuperAdmin):
+    """Legacy demo stream for mac/phone/axis presets. Gated per T02-21."""
     if camera_id not in ("mac", "phone", "axis"):
         raise HTTPException(status_code=404, detail="Камер олдсонгүй")
     return StreamingResponse(

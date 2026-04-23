@@ -4,7 +4,7 @@
 hybrid edge/RAG/VLM schema руу шилжих **lock decision** юм. T02 phase-ийн DB
 migration бүр энэ contract-г дагана.
 
-Updated: 2026-04-20
+Updated: 2026-04-21 (edge-box dormant-table note added)
 
 ---
 
@@ -274,14 +274,43 @@ Deployment note:
 
 ---
 
+## 8a. Dormant Tables From Dropped Hybrid-Edge Architecture
+
+Following the 2026-04-21 decision to drop the edge-box + central
+split (see `docs/decisions/2026-04-21-drop-edge-box-hybrid-architecture.md`),
+the following tables and columns remain in the schema but are
+**dormant**: no production code writes to them in the on-prem
+single-server deployment model.
+
+| Artifact | Origin task | Status |
+|---|---|---|
+| `edge_boxes` table | T02-02 | Dormant — never inserted. |
+| `sync_packs` table | T02-04 | Dormant — no sync pack lifecycle runs. |
+| `edge_box_metrics` table | T02-17 | Dormant — never inserted. |
+| `alerts.edge_box_id` column | T02-14 | Always NULL in new installs. |
+| `alerts.applied_by_edge_box_id` (via sync_packs FK) | T02-04 | N/A; sync_packs never populated. |
+
+**Rules:**
+
+1. Do not drop these objects. The `07-SCHEMA-MIGRATION-LOCK.md`
+   lock forbids destructive changes without an explicit decision.
+2. New code should not import `EdgeBox`, `SyncPack`,
+   `EdgeBoxMetric` or their repositories. The classes and
+   repositories remain for backward compatibility with existing
+   imports.
+3. A future task can delete them cleanly once the edge architecture
+   is definitively off the roadmap, but that is not scheduled.
+
+---
+
 ## 9. Open Decisions
 
 These are not locked by T02-01 and need separate decisions/tasks:
 
-| Decision | Owner task |
-|---|---|
-| TimescaleDB availability on Railway/local | T02-07 |
-| `stores.settings JSONB` vs `store_settings` table | T01-08 / T02 follow-up |
-| Whether public API ever exposes UUID IDs for core resources | Future API versioning task |
-| Object storage lifecycle policy for S3/Cloudinary | Future storage retention task |
-| RLS vs app-level tenant filter enforcement | T02-13 |
+| Decision | Owner task | Status |
+|---|---|---|
+| TimescaleDB availability on Railway/local | T02-07 | ✅ Closed — deferred to self-hosted central phase. See `docs/spikes/timescaledb-integration.md`. Until then: normal Postgres tables + app-side retention; guarded opt-in migration (`20260421_06`) stages the future switch. |
+| `stores.settings JSONB` vs `store_settings` table | T01-08 / T02 follow-up | ✅ Closed — chose `stores.settings JSONB` (migration `20260421_01`). |
+| Whether public API ever exposes UUID IDs for core resources | Future API versioning task | Open |
+| Object storage lifecycle policy for S3/Cloudinary | Future storage retention task | Open |
+| RLS vs app-level tenant filter enforcement | T02-13 | Open |

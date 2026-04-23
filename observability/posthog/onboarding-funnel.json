@@ -1,0 +1,66 @@
+{
+  "$schema": "https://posthog.com/schemas/insight.v1.json",
+  "name": "Onboarding Funnel — signup → first_detection",
+  "description": "End-to-end funnel from signup_started to first_detection. Target: >60% retention at every step; drop below triggers the alert defined in onboarding-dropoff-alert.yml.",
+  "insight": "FUNNELS",
+  "filters": {
+    "insight": "FUNNELS",
+    "funnel_viz_type": "steps",
+    "funnel_order_type": "ordered",
+    "funnel_window_interval_unit": "day",
+    "funnel_window_interval": 7,
+    "events": [
+      { "id": "signup_started",       "name": "1. Signup page viewed",     "order": 0 },
+      { "id": "signup_completed",     "name": "2. Signup form submitted",  "order": 1 },
+      { "id": "email_verified",       "name": "3. Email OTP verified",     "order": 2 },
+      { "id": "plan_selected",        "name": "4. Plan picked",            "order": 3 },
+      { "id": "trial_activated",      "name": "5. Trial activated",        "order": 4 },
+      { "id": "installer_downloaded", "name": "6. Installer downloaded",   "order": 5 },
+      { "id": "agent_connected",      "name": "7. Agent heartbeat",        "order": 6 },
+      { "id": "camera_connected",     "name": "8. Camera connected",       "order": 7 },
+      { "id": "first_detection",      "name": "9. First detection",        "order": 8 }
+    ],
+    "actions": [],
+    "breakdown_type": "event",
+    "breakdown": "$geoip_country_code",
+    "date_from": "-30d"
+  },
+  "display": "FunnelViz",
+  "dashboard_tiles": [
+    {
+      "name": "Step conversion rates (7-day rolling)",
+      "insight": "TRENDS",
+      "filters": {
+        "insight": "TRENDS",
+        "interval": "day",
+        "display": "ActionsLineGraph",
+        "events": [
+          { "id": "signup_started",   "math": "dau", "name": "Signup started" },
+          { "id": "signup_completed", "math": "dau", "name": "Signup completed" },
+          { "id": "email_verified",   "math": "dau", "name": "Email verified" },
+          { "id": "plan_selected",    "math": "dau", "name": "Plan selected" },
+          { "id": "trial_activated",  "math": "dau", "name": "Trial activated" },
+          { "id": "first_detection",  "math": "dau", "name": "First detection" }
+        ],
+        "date_from": "-30d"
+      }
+    },
+    {
+      "name": "Median time-to-first-detection (minutes)",
+      "insight": "TRENDS",
+      "filters": {
+        "insight": "TRENDS",
+        "events": [
+          {
+            "id": "first_detection",
+            "math": "median",
+            "math_property": "time_total_seconds",
+            "name": "Time to first detection"
+          }
+        ],
+        "interval": "day",
+        "date_from": "-30d"
+      }
+    }
+  ]
+}

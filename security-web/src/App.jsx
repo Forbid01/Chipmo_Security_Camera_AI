@@ -4,6 +4,9 @@ import ErrorBoundary from './components/ErrorBoundary';
 import Landing from './pages/Landing';
 import Login from './pages/Login';
 import Register from './pages/Register';
+import SignupPage from './pages/Onboarding/SignupPage';
+import VerifyPage from './pages/Onboarding/VerifyPage';
+import PlanPage from './pages/Onboarding/PlanPage';
 import Dashboard from './pages/Dashboard';
 import DashboardAdmin from './pages/DashboardAdmin';
 import Settings from './pages/Settings';
@@ -30,10 +33,15 @@ function App() {
           element={isAuthenticated ? <Navigate to="/dashboard" /> : <Login />} 
         />
         
-        <Route 
-          path="/register" 
-          element={isAuthenticated ? <Navigate to="/dashboard" /> : <Register />} 
+        <Route
+          path="/register"
+          element={isAuthenticated ? <Navigate to="/dashboard" /> : <Register />}
         />
+
+        {/* Self-service onboarding wizard (T2-01..T2-06) */}
+        <Route path="/signup" element={<SignupPage />} />
+        <Route path="/verify" element={<VerifyPage />} />
+        <Route path="/plan" element={<PlanPage />} />
 
         <Route 
           path="/forgot-password" 

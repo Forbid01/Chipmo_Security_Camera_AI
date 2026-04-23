@@ -1,0 +1,25 @@
+apiVersion: 1
+
+# Pre-wired Prometheus + Loki datasources so a fresh Grafana container
+# comes up ready to query. `uid`s are stable so dashboards can pin them.
+
+datasources:
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    uid: chipmo-prometheus
+    url: http://prometheus:9090
+    isDefault: true
+    jsonData:
+      timeInterval: 15s
+      httpMethod: POST
+    editable: false
+
+  - name: Loki
+    type: loki
+    access: proxy
+    uid: chipmo-loki
+    url: http://loki:3100
+    jsonData:
+      maxLines: 1000
+    editable: false

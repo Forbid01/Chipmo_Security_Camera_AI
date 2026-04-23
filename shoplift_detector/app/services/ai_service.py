@@ -117,33 +117,62 @@ class ShopliftDetector:
     def _async_save_alert(self, yolo_id, frame_to_save, name: str, reason: str,
                           bbox: list, camera_id: int = None, store_id: int = None,
                           score: float = None, cooldown_seconds: int = 60):
+        import asyncio
+
         try:
-            from app.services.storage import get_storage
-
-            current_time = int(time.time())
-            filename = f"alert_{yolo_id}_{current_time}.jpg"
-
-            import asyncio
             loop = asyncio.new_event_loop()
             try:
-                decision = loop.run_until_complete(
-                    self._should_send_alert(
-                        person_id=int(yolo_id),
+                loop.run_until_complete(
+                    self._dispatch_alert(
+                        yolo_id=yolo_id,
+                        frame_to_save=frame_to_save,
+                        name=name,
+                        reason=reason,
+                        bbox=bbox,
                         camera_id=camera_id,
+                        store_id=store_id,
+                        score=score,
                         cooldown_seconds=cooldown_seconds,
                     )
                 )
-                if not decision.should_alert:
-                    logger.info(
-                        "Alert suppressed for camera_id=%s person_track_id=%s: %s",
-                        camera_id,
-                        yolo_id,
-                        decision.reason,
-                    )
-                    return
             finally:
                 loop.close()
+        except Exception as e:
+            logger.error(f"Alert save error: {e}")
 
+    async def _dispatch_alert(self, *, yolo_id, frame_to_save, name, reason,
+                              bbox, camera_id, store_id, score, cooldown_seconds):
+        """Single-session orchestration: dedup → persist → record → notify.
+
+        Routes every step through AlertManager so that Telegram is only
+        notified after the alert is both approved by dedup and persisted.
+        """
+        from datetime import UTC, datetime, timedelta
+
+        from app.db.session import AsyncSessionLocal
+        from app.services.alert_manager import alert_manager
+        from app.services.storage import get_storage
+
+        person_track_id = int(yolo_id)
+        cooldown = max(0, int(cooldown_seconds or 0))
+
+        async with AsyncSessionLocal() as db:
+            decision = await alert_manager.should_send_alert(
+                db,
+                camera_id=camera_id,
+                person_track_id=person_track_id,
+                cooldown_seconds=cooldown,
+            )
+            if not decision.should_alert:
+                logger.info(
+                    "Alert suppressed for camera_id=%s person_track_id=%s: %s",
+                    camera_id,
+                    person_track_id,
+                    decision.reason,
+                )
+                return
+
+            filename = f"alert_{yolo_id}_{int(time.time())}.jpg"
             try:
                 image_url = get_storage().save_image(frame_to_save, filename=filename)
             except Exception as exc:
@@ -152,60 +181,50 @@ class ShopliftDetector:
                 cv2.imwrite(fallback, frame_to_save)
                 image_url = fallback
 
-            loop = asyncio.new_event_loop()
-            try:
-                alert_id = loop.run_until_complete(
-                    self._save_alert_to_db(
-                        person_id=int(yolo_id), image_path=image_url,
-                        reason=reason, camera_id=camera_id, store_id=store_id,
-                        score=score,
-                    )
-                )
-            finally:
-                loop.close()
+            from app.db.repository.alerts import AlertRepository
 
+            alert_id = await AlertRepository(db).insert_alert(
+                person_id=person_track_id,
+                image_path=image_url,
+                reason=reason,
+                camera_id=camera_id,
+                store_id=store_id,
+                confidence_score=score,
+            )
             if alert_id is None:
-                logger.info(
-                    "Alert insert suppressed for camera_id=%s person_track_id=%s",
+                logger.warning(
+                    "Alert insert returned None after dedup approved; "
+                    "camera_id=%s person_track_id=%s",
                     camera_id,
-                    yolo_id,
+                    person_track_id,
                 )
                 return
 
-            loop = asyncio.new_event_loop()
-            try:
-                loop.run_until_complete(
-                    self._record_alert_committed(
-                        person_id=int(yolo_id),
-                        camera_id=camera_id,
-                        alert_id=alert_id,
-                        cooldown_seconds=cooldown_seconds,
-                    )
-                )
-            finally:
-                loop.close()
+            now = datetime.now(UTC)
+            await alert_manager.record_alert_committed(
+                db,
+                camera_id=camera_id,
+                person_track_id=person_track_id,
+                alert_id=alert_id,
+                now=now,
+                cooldown_until=now + timedelta(seconds=cooldown),
+            )
 
-            try:
-                tg_loop = asyncio.new_event_loop()
-                tg_loop.run_until_complete(
-                    self._send_telegram_alert(
-                        store_id=store_id, camera_id=camera_id,
-                        reason=reason, image_path=image_url, score=score,
-                    )
-                )
-                tg_loop.close()
-            except Exception as tg_err:
-                logger.error(f"Telegram notification error: {tg_err}")
+        try:
+            await self._send_telegram_alert(
+                store_id=store_id, camera_id=camera_id,
+                reason=reason, image_path=image_url, score=score,
+            )
+        except Exception as tg_err:
+            logger.error(f"Telegram notification error: {tg_err}")
 
-            from app.core.state import alert_queue
-            alert_queue.put({
-                "id": yolo_id,
-                "img": image_url, "reason": reason, "name": name,
-                "frame": frame_to_save, "bbox": bbox,
-                "camera_id": camera_id, "store_id": store_id,
-            })
-        except Exception as e:
-            logger.error(f"Alert save error: {e}")
+        from app.core.state import alert_queue
+        alert_queue.put({
+            "id": yolo_id,
+            "img": image_url, "reason": reason, "name": name,
+            "frame": frame_to_save, "bbox": bbox,
+            "camera_id": camera_id, "store_id": store_id,
+        })
 
     async def _send_telegram_alert(self, store_id, camera_id, reason, image_path, score):
         """Дэлгүүрийн telegram_chat_id руу мэдэгдэл илгээх."""
@@ -237,53 +256,6 @@ class ShopliftDetector:
             image_path=image_path,
             score=score,
         )
-
-    async def _save_alert_to_db(self, person_id, image_path, reason,
-                                 camera_id=None, store_id=None, score=None):
-        from app.db.repository.alerts import AlertRepository
-        from app.db.session import AsyncSessionLocal
-
-        async with AsyncSessionLocal() as db:
-            repo = AlertRepository(db)
-            return await repo.insert_alert(
-                person_id=person_id, image_path=image_path, reason=reason,
-                camera_id=camera_id, store_id=store_id, confidence_score=score,
-            )
-
-    async def _should_send_alert(self, person_id, camera_id=None, cooldown_seconds=60):
-        from app.db.session import AsyncSessionLocal
-        from app.services.alert_manager import alert_manager
-
-        async with AsyncSessionLocal() as db:
-            return await alert_manager.should_send_alert(
-                db,
-                camera_id=camera_id,
-                person_track_id=person_id,
-                cooldown_seconds=cooldown_seconds,
-            )
-
-    async def _record_alert_committed(
-        self,
-        person_id,
-        alert_id,
-        camera_id=None,
-        cooldown_seconds=60,
-    ):
-        from datetime import UTC, datetime, timedelta
-
-        from app.db.session import AsyncSessionLocal
-        from app.services.alert_manager import alert_manager
-
-        now = datetime.now(UTC)
-        async with AsyncSessionLocal() as db:
-            await alert_manager.record_alert_committed(
-                db,
-                camera_id=camera_id,
-                person_track_id=person_id,
-                alert_id=alert_id,
-                now=now,
-                cooldown_until=now + timedelta(seconds=max(0, int(cooldown_seconds or 0))),
-            )
 
     @staticmethod
     def _keypoint_valid(kp) -> bool:

@@ -13,6 +13,14 @@ if TYPE_CHECKING:
     from .store import Store
 
 
+# Decision values allowed in the RAG / VLM pipeline columns. These are
+# not DB-enforced (both columns are plain VARCHAR so a future stage can
+# ship a new verdict without a schema change), but keeping constants
+# here stops the raw strings from drifting across services.
+RAG_DECISIONS = ("not_run", "passed", "suppressed_by_rag")
+VLM_DECISIONS = ("not_run", "passed", "suppressed_by_vlm")
+
+
 class Alert(Base):
     __tablename__ = "alerts"
 
@@ -38,6 +46,21 @@ class Alert(Base):
 
     # Auto-learning: true_positive, false_positive, unreviewed
     feedback_status: Mapped[str] = mapped_column(String(20), default="unreviewed", nullable=False)
+
+    # --- Pipeline v2 columns (T02-14) --------------------------------------
+    # True when the alert was produced but did not reach the customer
+    # because the RAG or VLM layer rejected it. We keep suppressed rows
+    # so dashboards can chart suppression rate and so regressions in
+    # the layered pipeline are visible.
+    suppressed: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    suppressed_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # RAG / VLM verdicts. See RAG_DECISIONS / VLM_DECISIONS above.
+    rag_decision: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    vlm_decision: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    # Tracker id emitted by ByteTrack, distinct from legacy `person_id`
+    # (which callers sometimes set to the YOLO raw id). Having both lets
+    # us migrate the dedup key gradually without breaking legacy writers.
+    person_track_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     # Relationships
     organization: Mapped[Optional["Organization"]] = relationship(back_populates="alerts")

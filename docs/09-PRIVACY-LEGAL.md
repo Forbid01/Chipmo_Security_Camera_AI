@@ -1,5 +1,13 @@
 # 09 — Privacy & Legal Compliance
 
+> **Note (2026-04-21):** Centralized SaaS architecture-д шинэчлэгдсэн.
+> Харилцагчийн raw video нь одоо Chipmo-ийн VPN tunnel-ээр
+> Chipmo серверлүү дамжина. Энэ нь хуулийн хувьд хуучин edge-based
+> архитектурт байхгүй байсан нэмэлт commitments үүсгэнэ:
+> (1) "no recording" default, (2) ≤10сек alert clip retention, (3) per-tenant
+> isolation баталгаа, (4) tenant opt-in для shared behavior taxonomy.
+> See [`decisions/2026-04-21-centralized-saas-no-customer-hardware.md`](./decisions/2026-04-21-centralized-saas-no-customer-hardware.md).
+
 Монголын хувийн мэдээллийн хамгаалалтын хууль, GDPR-тэй нийцсэн байдал,
 харилцагчтай байгуулах гэрээний шаардлагууд.
 
@@ -39,7 +47,13 @@
 
 5. **Мэдээлэл хилийн гадна гаргах:**
    - Хилээр гадагшлуулах бол тусгай зөвшөөрөл
-   - Manay edge-first архитектур нь raw video хилээр гардаггүй → сайн
+   - Centralized SaaS архитектурт raw video харилцагчаас Chipmo-ийн
+     сервер рүү дамждаг. Phase A (Railway) болон Phase B (cloud GPU)
+     зарим тохиолдолд гадаад юрисдикц (US/EU) байж болно → MSA-д
+     **explicit cross-border transfer consent clause** заавал байна.
+   - Phase C (owned GPU) Монголын datacenter-д байрлуулснаар хилийн
+     гадна дамжуулалтыг устгана — energy reg compliance-ийн хамгийн
+     цэвэр хувилбар.
 
 ### 1.2 Зөрчлийн хариуцлага
 
@@ -126,31 +140,88 @@ Retention: 1 жил.
 
 ### 3.4 Network isolation
 
-- Камерууд тусдаа VLAN (harilцагчийн router) — internet access NO
-- Edge box WAN connection зөвхөн outbound
-- WireGuard tunnel encrypted (ChaCha20-Poly1305)
-- TLS 1.3 бүх HTTPS endpoint
+- **Харилцагч LAN:** Камерууд тусдаа VLAN, internet access NO
+  (customer-ийн router-т тохируулна).
+- **VPN appliance:** Chipmo-ийн WireGuard peer (GL.iNet router эсвэл Pi)
+  зөвхөн outbound UDP 51820 ашиглана. Customer LAN-ийн бусад device
+  рүү routing байхгүй.
+- **WireGuard tunnel:** ChaCha20-Poly1305 encrypted. Peer pubkey
+  rotation 180 хоногт.
+- **Chipmo hub:** Inter-peer traffic дефолт DROP (iptables policy),
+  зөвхөн peer ↔ hub зөвшөөрөгдсөн. Өөр tenant-ын peer рүү traffic
+  боломжгүй.
+- **TLS 1.3** бүх HTTPS endpoint.
+- **Per-tenant network namespace** (Phase B+): ingest worker-ууд
+  нэг-нэгэнд шаардлагагүй байдлаар isolated.
 
-### 3.5 Data minimization
+### 3.5 Data minimization & no-recording default
+
+**Core commitment to customer:** Chipmo **бичлэг хийдэггүй**. Video
+stream нь RAM-д decoded, inference-д ашиглагдаж, дараа нь буцааж шалгах
+боломжгүй ба буцааж гаргагдах боломжгүй.
+
+**Exception — confirmed alert clip only:**
+- Layer 3 VLM verify-р пасс хийсэн event-д л ≤10 сек video clip
+  persist хийнэ.
+- Clip нь per-tenant encryption key-ээр AES-256-GCM encrypt.
+- Clip retention (см §3.6) — default 30 хоног, tenant policy-оор
+  богиносгож болно.
 
 **Биометрийн мэдээллийг хадгалахыг хязгаарлана:**
-- Face embedding **НЕ** хадгална (Re-ID-д нүүрээс биш биеэс embedding)
-- OSNet нь биеийн appearance (хувцас, физик хэмжээ) дээр сурсан
+- Face embedding **НЕ** хадгална (Re-ID-д нүүрээс биш биеэс embedding).
+- OSNet нь биеийн appearance (хувцас, физик хэмжээ) дээр сурсан.
 - Pose keypoint нь нүүрний 5 цэгийг (нүд, хамар, чих) ашигладаг хэдий ч
-  эдгээрийг нэрлэлттэй холбогдсон хэлбэрээр хадгалахгүй
+  эдгээрийг нэрлэлттэй холбогдсон хэлбэрээр хадгалахгүй.
 
-### 3.6 Retention policy
+### 3.6 Retention policy (centralized SaaS)
 
 | Data | Retention | Justification |
 |---|---|---|
-| Raw RTSP stream | 48h (local) | Зөвхөн buffer-д хадгална, storage-д НЕ |
-| Normal clips | 48h | Contextual archive |
-| Alert clips (unlabeled) | 30 хоног | Investigation window |
-| Alert clips (labeled theft) | 2 жил | Эрх зүйн маргаан, feedback |
-| Alert clips (labeled FP) | 6 сар | Training data |
+| Live RTSP stream | **0** (in-memory only) | Chipmo "no recording" commitment |
+| VPN appliance local ring buffer | 24h max | Internet outage backfill only; customer-side |
+| Alert clip (unlabeled) | 30 хоног | Investigation window |
+| Alert clip (labeled theft) | 2 жил | Эрх зүйн маргаан, training |
+| Alert clip (labeled FP) | 6 сар | Hard-negative training |
 | Feedback labels | Unlimited | Model improvement |
+| Re-ID embedding (per-tenant) | 30 хоног default, tenant-configurable | GDPR-aligned, opt-in extension |
+| Shared behavior taxonomy | Unlimited (anonymized, no PII) | Product moat, audit-safe |
 | Audit log | 1 жил | Compliance |
-| Edge metrics | 30 хоног | Ops |
+| Metrics | 30 хоног | Ops |
+
+### 3.7 DPIA (Data Protection Impact Assessment)
+
+Centralized SaaS архитектурт раw video customer premises-ээс гардаг
+тул DPIA бичиж, харилцагчтай хамт батлуулна:
+
+- **Шаардлагатай үе:** Первый paid customer-ын өмнө.
+- **Template:** `legal/dpia_template_v1.docx` (Монгол + Англи).
+- **Тууз хэсгүүд:**
+  1. Processing descriptn (юу хийнэ, юуны төлөө)
+  2. Necessity + proportionality assessment
+  3. Risk (хэн нөлөөлнө: харилцагч ажилтан, үйлчлүүлэгч, 3rd party)
+  4. Mitigation measures (анонимчлал, retention, access control)
+  5. Cross-border transfer (Phase A/B — зарим хугацаанд)
+  6. Monitoring + review plan
+
+- **Update cycle:** Жил бүр эсвэл архитектур томоохон өөрчлөлтөнд.
+- **Public-facing summary:** Simplified version on chipmo.mn/privacy.
+
+### 3.8 Shared behavior taxonomy — opt-in consent
+
+Tenant-ын confirmed alert-оос anonymized pose pattern-ийг
+`behavior_taxonomy_v1` Qdrant collection-д бичих нь **opt-in** (MSA-д
+tick-box, default ON байх боловч customer мэдээлэлтэй).
+
+**Anonymization guarantees:**
+- NO tenant_id
+- NO store_id / camera_id
+- NO person_reid_id
+- NO image / clip reference
+- NO timestamps (just temporal_window_sec)
+
+See [`03-TECH-SPECS.md`](./03-TECH-SPECS.md) §14 for technical
+enforcement. Test harness `tests/test_taxonomy_anonymization.py`
+должен pass before any release touching taxonomy write path.
 
 ---
 
@@ -408,7 +479,8 @@ Privacy-г барьцаалж шинэ feature launch-дах гэвэл:
 - [01-ARCHITECTURE.md](./01-ARCHITECTURE.md) (privacy-by-design section)
 - [06-DATABASE-SCHEMA.md](./06-DATABASE-SCHEMA.md) (audit_log, encryption)
 - [07-API-SPEC.md](./07-API-SPEC.md) (auth, access control)
+- [decisions/2026-04-21-centralized-saas-no-customer-hardware.md](./decisions/2026-04-21-centralized-saas-no-customer-hardware.md)
 
 ---
 
-Updated: 2026-04-17
+Updated: 2026-04-21

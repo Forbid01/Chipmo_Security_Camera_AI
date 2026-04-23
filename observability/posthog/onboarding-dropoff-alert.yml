@@ -1,0 +1,51 @@
+# PostHog subscription → Slack alert when any onboarding funnel step
+# drops below 60% conversion for a 24-hour window (T2-10).
+#
+# PostHog's alerts API doesn't support step-level thresholds directly,
+# so we compose it out of one alert per step → aggregate channel rule
+# in Slack. Import this with:
+#
+#     posthog-cli alerts apply observability/posthog/onboarding-dropoff-alert.yml
+#
+# Actual enforcement lives at the PostHog side. This file is the
+# declarative source of truth; keep it in git so a config drift shows
+# up in review.
+
+version: 1
+notification_channel:
+  type: slack
+  webhook_env: POSTHOG_SLACK_WEBHOOK
+  channel: "#onboarding-funnel"
+
+alerts:
+  - name: signup_started_to_signup_completed_below_60pct
+    window: 24h
+    expression: conversion(signup_started -> signup_completed) < 0.60
+    severity: warning
+    runbook: https://notion.so/sentry/runbook/onboarding-dropoff
+
+  - name: signup_completed_to_email_verified_below_60pct
+    window: 24h
+    expression: conversion(signup_completed -> email_verified) < 0.60
+    severity: warning
+
+  - name: email_verified_to_plan_selected_below_60pct
+    window: 24h
+    expression: conversion(email_verified -> plan_selected) < 0.60
+    severity: warning
+
+  - name: plan_selected_to_trial_activated_below_60pct
+    window: 24h
+    expression: conversion(plan_selected -> trial_activated) < 0.60
+    severity: warning
+
+  - name: trial_activated_to_first_detection_below_60pct
+    window: 24h
+    expression: conversion(trial_activated -> first_detection) < 0.60
+    severity: critical   # This step is the 15-minute SLO commitment.
+
+  - name: time_to_first_detection_above_sla
+    window: 24h
+    expression: p50(first_detection.time_total_seconds) > 900   # 15 min
+    severity: warning
+    runbook: https://notion.so/sentry/runbook/slow-first-detection

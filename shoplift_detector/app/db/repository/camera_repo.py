@@ -73,9 +73,21 @@ class CameraRepository:
         result = await self.db.execute(query)
         return [dict(row) for row in result.mappings().fetchall()]
 
-    async def update(self, camera_id: int, data: CameraUpdate) -> bool:
+    async def update(
+        self,
+        camera_id: int,
+        data: CameraUpdate,
+        *,
+        organization_id: int | None = None,
+    ) -> bool:
+        """T02-22: optional tenant pin. When `organization_id` is
+        supplied (the T02-21 handler path does), the UPDATE's WHERE
+        clause includes `cameras.organization_id = :org_id` so a mis-wired
+        handler cannot UPDATE another tenant's row. `None` keeps legacy
+        super-admin paths working.
+        """
         updates = []
-        params = {"id": camera_id}
+        params: dict[str, Any] = {"id": camera_id}
         for field, value in data.model_dump(exclude_unset=True).items():
             updates.append(f"{field} = :{field}")
             params[field] = value
@@ -83,13 +95,33 @@ class CameraRepository:
         if not updates:
             return True
 
-        query = text(f"UPDATE cameras SET {', '.join(updates)} WHERE id = :id")
+        tenant_clause = ""
+        if organization_id is not None:
+            tenant_clause = " AND organization_id = :org_id"
+            params["org_id"] = organization_id
+
+        query = text(
+            f"UPDATE cameras SET {', '.join(updates)} "
+            f"WHERE id = :id{tenant_clause}"
+        )
         result = await self.db.execute(query, params)
         await self.db.commit()
         return result.rowcount > 0
 
-    async def delete(self, camera_id: int) -> bool:
-        query = text("DELETE FROM cameras WHERE id = :id")
-        result = await self.db.execute(query, {"id": camera_id})
+    async def delete(
+        self,
+        camera_id: int,
+        *,
+        organization_id: int | None = None,
+    ) -> bool:
+        params: dict[str, Any] = {"id": camera_id}
+        tenant_clause = ""
+        if organization_id is not None:
+            tenant_clause = " AND organization_id = :org_id"
+            params["org_id"] = organization_id
+        query = text(
+            f"DELETE FROM cameras WHERE id = :id{tenant_clause}"
+        )
+        result = await self.db.execute(query, params)
         await self.db.commit()
         return result.rowcount > 0

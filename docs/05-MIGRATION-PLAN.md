@@ -1,5 +1,13 @@
 # 05 — Migration Plan: Centralized → Hybrid Edge
 
+> ⚠️ **SUPERSEDED (2026-04-21):** Энэ документ нь hybrid edge-д шилжих
+> migration-ыг агуулсан боловч тэр architecture нь
+> [`decisions/2026-04-21-drop-edge-box-hybrid-architecture.md`](./decisions/2026-04-21-drop-edge-box-hybrid-architecture.md)-р
+> татгалзагдсан. Одоогийн default архитектур нь centralized SaaS —
+> customer onboarding-ийг
+> [`05-ONBOARDING-PLAYBOOK.md`](./05-ONBOARDING-PLAYBOOK.md)-с харна уу.
+> Документ prior art-ын хувьд үлдсэн.
+
 Одоогийн централизованный архитектураас hybrid edge архитектурт
 шилжих алхам-алхмын төлөвлөгөө.
 

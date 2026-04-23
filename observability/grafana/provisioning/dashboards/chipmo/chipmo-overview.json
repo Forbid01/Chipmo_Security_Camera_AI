@@ -1,0 +1,305 @@
+{
+  "annotations": {
+    "list": []
+  },
+  "description": "Chipmo backend overview. Pins to datasource uids chipmo-prometheus and chipmo-loki provisioned in T02-10. Panels cover: alert rate, 7-day rolling FP rate, GPU memory + utilization, inference latency (p50/p95/p99 per stage), camera uptime heatmap, camera FPS distribution.",
+  "editable": true,
+  "graphTooltip": 1,
+  "liveNow": false,
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "tags": ["chipmo", "overview"],
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Chipmo — Overview",
+  "uid": "chipmo-overview",
+  "version": 1,
+  "templating": {
+    "list": [
+      {
+        "name": "store_id",
+        "label": "Store",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "chipmo-prometheus"
+        },
+        "type": "query",
+        "query": "label_values(chipmo_alerts_total, store_id)",
+        "multi": true,
+        "includeAll": true,
+        "allValue": ".+",
+        "current": {
+          "selected": true,
+          "text": "All",
+          "value": "$__all"
+        },
+        "refresh": 2,
+        "sort": 1
+      },
+      {
+        "name": "camera_id",
+        "label": "Camera",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "chipmo-prometheus"
+        },
+        "type": "query",
+        "query": "label_values(chipmo_camera_fps, camera_id)",
+        "multi": true,
+        "includeAll": true,
+        "allValue": ".+",
+        "current": {
+          "selected": true,
+          "text": "All",
+          "value": "$__all"
+        },
+        "refresh": 2,
+        "sort": 1
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Alert rate — per store (alerts / hour)",
+      "description": "Rate of chipmo_alerts_total over the last 5 minutes, scaled to alerts / hour.",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "chipmo-prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sum by (store_id) (rate(chipmo_alerts_total{store_id=~\"$store_id\"}[5m])) * 3600",
+          "legendFormat": "store {{store_id}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 1,
+          "custom": {
+            "lineInterpolation": "smooth",
+            "fillOpacity": 10,
+            "gradientMode": "opacity"
+          }
+        }
+      },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "right", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      }
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "False positive rate (rolling 7-day) — per store",
+      "description": "FP / (TP + FP) over a 7-day sliding window.",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "chipmo-prometheus"
+      },
+      "targets": [
+        {
+          "expr": "sum by (store_id) (increase(chipmo_false_positives_total{store_id=~\"$store_id\"}[7d]))\n/\nclamp_min(\n  sum by (store_id) (\n    increase(chipmo_false_positives_total{store_id=~\"$store_id\"}[7d])\n    + increase(chipmo_true_positives_total{store_id=~\"$store_id\"}[7d])\n  ),\n  1\n)",
+          "legendFormat": "store {{store_id}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "value": null, "color": "green" },
+              { "value": 0.1, "color": "yellow" },
+              { "value": 0.25, "color": "red" }
+            ]
+          },
+          "custom": {
+            "lineInterpolation": "smooth",
+            "fillOpacity": 10,
+            "thresholdsStyle": { "mode": "dashed" }
+          }
+        }
+      }
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "GPU utilization — per device",
+      "description": "chipmo_gpu_utilization_percent pushed by the inference workers.",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "chipmo-prometheus" },
+      "targets": [
+        {
+          "expr": "chipmo_gpu_utilization_percent",
+          "legendFormat": "gpu {{gpu_id}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "value": null, "color": "green" },
+              { "value": 70, "color": "yellow" },
+              { "value": 90, "color": "red" }
+            ]
+          },
+          "custom": { "fillOpacity": 15 }
+        }
+      }
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "GPU memory used — per device",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "chipmo-prometheus" },
+      "targets": [
+        {
+          "expr": "chipmo_gpu_memory_used_bytes",
+          "legendFormat": "gpu {{gpu_id}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "decimals": 1,
+          "custom": { "fillOpacity": 15 }
+        }
+      }
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Inference latency — p50 / p95 / p99 by stage",
+      "description": "Derived from chipmo_inference_latency_seconds histogram.",
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "chipmo-prometheus" },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum by (le, stage) (rate(chipmo_inference_latency_seconds_bucket[5m])))",
+          "legendFormat": "{{stage}} p50",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum by (le, stage) (rate(chipmo_inference_latency_seconds_bucket[5m])))",
+          "legendFormat": "{{stage}} p95",
+          "refId": "B"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum by (le, stage) (rate(chipmo_inference_latency_seconds_bucket[5m])))",
+          "legendFormat": "{{stage}} p99",
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "decimals": 3,
+          "custom": { "lineInterpolation": "smooth", "fillOpacity": 0 }
+        }
+      },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      }
+    },
+    {
+      "id": 6,
+      "type": "heatmap",
+      "title": "Camera uptime — online=1, offline=0",
+      "description": "chipmo_camera_online per camera over time. Green = streaming.",
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 25 },
+      "datasource": { "type": "prometheus", "uid": "chipmo-prometheus" },
+      "targets": [
+        {
+          "expr": "chipmo_camera_online{camera_id=~\"$camera_id\"}",
+          "legendFormat": "cam {{camera_id}}",
+          "refId": "A",
+          "format": "time_series"
+        }
+      ],
+      "options": {
+        "calculate": false,
+        "cellGap": 1,
+        "cellValues": { "decimals": 0 },
+        "color": {
+          "mode": "scheme",
+          "scheme": "RdYlGn",
+          "steps": 2,
+          "min": 0,
+          "max": 1
+        },
+        "tooltip": { "show": true, "yHistogram": false }
+      }
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Camera FPS distribution",
+      "description": "Per-camera frames-per-second gauge.",
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 25 },
+      "datasource": { "type": "prometheus", "uid": "chipmo-prometheus" },
+      "targets": [
+        {
+          "expr": "chipmo_camera_fps{camera_id=~\"$camera_id\"}",
+          "legendFormat": "cam {{camera_id}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "value": null, "color": "red" },
+              { "value": 3, "color": "yellow" },
+              { "value": 10, "color": "green" }
+            ]
+          },
+          "custom": { "fillOpacity": 10 }
+        }
+      }
+    },
+    {
+      "id": 8,
+      "type": "logs",
+      "title": "Backend logs (Loki)",
+      "description": "Live stream of chipmo-backend container logs via Promtail → Loki.",
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 34 },
+      "datasource": { "type": "loki", "uid": "chipmo-loki" },
+      "targets": [
+        {
+          "expr": "{service=\"chipmo-backend\"}",
+          "refId": "A"
+        }
+      ],
+      "options": {
+        "showLabels": false,
+        "showTime": true,
+        "sortOrder": "Descending",
+        "wrapLogMessage": true
+      }
+    }
+  ]
+}
