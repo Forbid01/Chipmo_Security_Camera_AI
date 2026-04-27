@@ -23,11 +23,18 @@ onnxruntime
 # Railway's managed Postgres ships with the extension preinstalled.
 sentence-transformers>=2.7.0
 pgvector>=0.3.0
-
-# --- Vision-Language Model (Phase 2 - GPU recommended) ---
-transformers>=4.45.0
-accelerate>=0.30.0
 pillow>=10.0.0
+
+# --- Vision-Language Model (Phase 2) ---
+# `transformers` + `accelerate` are NOT in this file. The main app
+# only ever talks to a remote VLM microservice (vlm_server/) via HTTP
+# in production — it doesn't need to load Qwen2.5-VL in-process. The
+# heavy wheels live in `vlm_server/requirements.txt` and only install
+# on the GPU host. Pulling them on Railway adds ~2GB to the build and
+# routinely trips the build-timeout deadline.
+#
+# For a single-box dev environment that wants in-process VLM, install
+# them explicitly:  pip install -r vlm_server/requirements.txt
 
 # --- Database ---
 sqlalchemy[asyncio]>=2.0

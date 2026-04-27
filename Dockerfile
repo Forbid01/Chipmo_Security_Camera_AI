@@ -5,7 +5,15 @@ WORKDIR /app
 
 COPY requirements.txt .
 
+# Install the CPU-only torch wheel BEFORE the rest of requirements.txt.
+# The default PyPI index serves the CUDA build (~2GB) which routinely
+# trips Railway's build deadline. The CPU wheel is ~200MB and is what
+# the runtime actually uses on Railway (no GPU). Pinning the same torch
+# version across both indexes prevents pip from upgrading later.
 RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir \
+        torch torchvision \
+        --index-url https://download.pytorch.org/whl/cpu && \
     pip install --no-cache-dir -r requirements.txt
 
 FROM node:20-alpine AS frontend-builder

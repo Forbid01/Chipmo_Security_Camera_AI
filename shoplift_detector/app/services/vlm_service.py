@@ -80,6 +80,12 @@ Rules:
 def _ensure_loaded() -> None:
     """Load Qwen2.5-VL on first use. Holds a thread lock so two
     concurrent first-callers don't race the model into GPU memory twice.
+
+    Raises ImportError with an actionable message when transformers
+    isn't installed (the main app's requirements.txt deliberately
+    excludes it — only the GPU host's vlm_server/ image carries the
+    wheel). Most Railway-style deployments use VLM_REMOTE_URL and
+    never reach this code path.
     """
     global _model, _processor
     if _model is not None and _processor is not None:
@@ -89,7 +95,17 @@ def _ensure_loaded() -> None:
             return
 
         import torch
-        from transformers import AutoProcessor, Qwen2_5_VLForConditionalGeneration
+        try:
+            from transformers import AutoProcessor, Qwen2_5_VLForConditionalGeneration
+        except ImportError as exc:
+            raise ImportError(
+                "In-process VLM requires `transformers` + `accelerate`, "
+                "which the main app deliberately omits to keep the "
+                "Railway build under the timeout. Either install "
+                "vlm_server/requirements.txt locally, or set "
+                "VLM_REMOTE_URL to a vlm_server/ instance running on "
+                "your GPU host."
+            ) from exc
 
         dtype_map = {
             "bfloat16": torch.bfloat16,
