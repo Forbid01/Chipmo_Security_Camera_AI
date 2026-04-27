@@ -1,0 +1,166 @@
+name: Agent Installer (Windows)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "agent/installer/windows/**"
+      - ".github/workflows/agent-installer-windows.yml"
+    tags:
+      - "agent-v*"
+  pull_request:
+    paths:
+      - "agent/installer/windows/**"
+      - ".github/workflows/agent-installer-windows.yml"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Semver applied to the installer metadata (e.g. 0.1.0)."
+        required: false
+        default: "0.1.0-dev"
+      sign:
+        description: "Authenticode-sign the .exe (requires secrets)."
+        required: false
+        default: "auto"
+
+jobs:
+  build:
+    name: Build SentryAgentSetup.exe
+    runs-on: windows-latest
+    permissions:
+      contents: read
+
+    env:
+      INSTALLER_DIR: agent/installer/windows
+      ISS_FILE: SentryAgent.iss
+      OUTPUT_DIR: agent/installer/windows/dist
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve build version
+        id: version
+        shell: pwsh
+        run: |
+          $ref = "${{ github.ref }}"
+          if ($ref -like "refs/tags/agent-v*") {
+            $version = $ref -replace "refs/tags/agent-v", ""
+          }
+          elseif ("${{ github.event_name }}" -eq "workflow_dispatch") {
+            $version = "${{ github.event.inputs.version }}"
+          }
+          else {
+            $version = "0.0.0+${{ github.sha }}".Substring(0, 20)
+          }
+          Write-Host "Resolved version: $version"
+          "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+      - name: Install Inno Setup 6
+        shell: pwsh
+        run: |
+          choco install innosetup --version=6.3.3 --no-progress --yes
+          $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) {
+            throw "ISCC.exe not found at $iscc — Inno Setup install failed."
+          }
+          "ISCC_PATH=$iscc" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Lint Inno script (compile in test mode)
+        shell: pwsh
+        working-directory: ${{ env.INSTALLER_DIR }}
+        run: |
+          # /? + /DSentryVersion exercise the preprocessor without
+          # needing the runtime files, giving us a fast syntax gate.
+          & $env:ISCC_PATH /Qp "/DSentryVersion=${{ steps.version.outputs.version }}" $env:GITHUB_WORKSPACE\${{ env.INSTALLER_DIR }}\${{ env.ISS_FILE }}
+          if ($LASTEXITCODE -ne 0) { throw "ISCC lint failed ($LASTEXITCODE)." }
+
+      - name: Compile installer
+        shell: pwsh
+        working-directory: ${{ env.INSTALLER_DIR }}
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          & $env:ISCC_PATH "/DSentryVersion=${{ steps.version.outputs.version }}" $env:GITHUB_WORKSPACE\${{ env.INSTALLER_DIR }}\${{ env.ISS_FILE }}
+          if ($LASTEXITCODE -ne 0) { throw "ISCC compile failed ($LASTEXITCODE)." }
+          $setup = Join-Path (Resolve-Path dist) "SentryAgentSetup.exe"
+          if (-not (Test-Path $setup)) { throw "SentryAgentSetup.exe not produced." }
+          Write-Host "Built $setup ($((Get-Item $setup).Length / 1MB) MB)"
+
+      - name: Determine whether to sign
+        id: sign_decision
+        shell: pwsh
+        env:
+          HAS_CERT: ${{ secrets.WINDOWS_CERT_BASE64 != '' }}
+          SIGN_INPUT: ${{ github.event.inputs.sign }}
+        run: |
+          # Sign when:
+          #   * release tag + secret present, OR
+          #   * manual dispatch explicitly asked for signing.
+          # Tag releases MUST be signed — never ship an unsigned
+          # installer as a public release (SmartScreen would block it
+          # and users would have no cryptographic origin guarantee).
+          $refIsTag = "${{ github.ref }}" -like "refs/tags/agent-v*"
+          if ($refIsTag -and $env:HAS_CERT -ne "True") {
+            throw "Release tag detected but WINDOWS_CERT_BASE64 / WINDOWS_CERT_PASSWORD secrets are not configured. Refusing to publish an unsigned installer."
+          }
+          if ($env:SIGN_INPUT -eq "true" -and $env:HAS_CERT -ne "True") {
+            throw "Manual dispatch asked for signing but no signing cert secrets are configured."
+          }
+          $shouldSign = $false
+          if ($env:SIGN_INPUT -eq "true" -and $env:HAS_CERT -eq "True") {
+            $shouldSign = $true
+          }
+          elseif ($env:SIGN_INPUT -eq "auto" -and $refIsTag -and $env:HAS_CERT -eq "True") {
+            $shouldSign = $true
+          }
+          "sign=$shouldSign".ToLower() | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
+      - name: Authenticode sign
+        if: steps.sign_decision.outputs.sign == 'true'
+        shell: pwsh
+        env:
+          CERT_B64: ${{ secrets.WINDOWS_CERT_BASE64 }}
+          CERT_PASSWORD: ${{ secrets.WINDOWS_CERT_PASSWORD }}
+        run: |
+          $pfx = Join-Path $env:RUNNER_TEMP "sentry-signing.pfx"
+          [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:CERT_B64))
+          try {
+            # Pick the newest signtool.exe available on the runner.
+            $signtool = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin" -Recurse -Filter signtool.exe |
+              Where-Object { $_.FullName -like "*\x64\*" } |
+              Sort-Object LastWriteTime -Descending |
+              Select-Object -First 1 -ExpandProperty FullName
+            if (-not $signtool) { throw "signtool.exe not found on runner." }
+
+            $setup = Join-Path $env:GITHUB_WORKSPACE "${{ env.OUTPUT_DIR }}\SentryAgentSetup.exe"
+            & $signtool sign `
+              /f $pfx `
+              /p $env:CERT_PASSWORD `
+              /tr "http://timestamp.digicert.com" `
+              /td sha256 `
+              /fd sha256 `
+              /d "Sentry Agent" `
+              /du "https://sentry.mn" `
+              $setup
+            if ($LASTEXITCODE -ne 0) { throw "signtool sign failed ($LASTEXITCODE)." }
+
+            # Verify the signature chained to a trusted root.
+            & $signtool verify /pa /v $setup
+            if ($LASTEXITCODE -ne 0) { throw "signtool verify failed ($LASTEXITCODE)." }
+          }
+          finally {
+            Remove-Item $pfx -Force -ErrorAction SilentlyContinue
+          }
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SentryAgentSetup-${{ steps.version.outputs.version }}
+          path: ${{ env.OUTPUT_DIR }}/SentryAgentSetup.exe
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Attach installer to release
+        if: startsWith(github.ref, 'refs/tags/agent-v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ env.OUTPUT_DIR }}/SentryAgentSetup.exe

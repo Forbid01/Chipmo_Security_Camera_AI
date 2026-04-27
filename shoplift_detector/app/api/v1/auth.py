@@ -13,6 +13,7 @@ from app.core.security import (
     validate_password_strength,
     verify_password,
 )
+from app.db.repository.tenants import TenantRepository
 from app.db.repository.users import UserRepository
 from app.db.session import DB
 from app.schemas.auth import (
@@ -82,11 +83,16 @@ async def login(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
+    tenant_repo = TenantRepository(db)
+    tenant_id = await tenant_repo.get_tenant_id_for_organization(
+        user.get("organization_id")
+    )
     token_data = {
         "sub": user["username"],
         "role": user.get("role", "user"),
         "org_id": user.get("organization_id"),
         "user_id": user.get("id"),
+        "tenant_id": tenant_id,
     }
     access_token = create_access_token(data=token_data)
 

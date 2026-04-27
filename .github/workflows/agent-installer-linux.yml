@@ -1,0 +1,125 @@
+name: Agent Installer (Linux)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "agent/installer/linux/**"
+      - ".github/workflows/agent-installer-linux.yml"
+    tags:
+      - "agent-v*"
+  pull_request:
+    paths:
+      - "agent/installer/linux/**"
+      - ".github/workflows/agent-installer-linux.yml"
+  workflow_dispatch:
+
+jobs:
+  validate:
+    name: Lint + validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: shellcheck
+        uses: ludeeus/action-shellcheck@master
+        env:
+          SHELLCHECK_OPTS: -x -S warning
+        with:
+          scandir: agent/installer/linux
+
+      - name: bash -n syntax
+        run: |
+          for f in agent/installer/linux/*.sh; do
+            bash -n "$f"
+          done
+
+      - name: Validate systemd unit
+        run: |
+          # systemd-analyze verify exits non-zero on any directive
+          # error. We run it against a staged copy because the real
+          # unit path doesn't exist in CI.
+          sudo cp agent/installer/linux/sentry-agent.service \
+                  /etc/systemd/system/sentry-agent.service
+          # @SENTRY_IMAGE@ placeholder is not a valid ExecStart target
+          # until install.sh rewrites it — substitute a dummy so
+          # analyze can parse the full command line.
+          sudo sed -i 's|@SENTRY_IMAGE@|ghcr.io/example/sentry-agent:ci|' \
+                  /etc/systemd/system/sentry-agent.service
+          sudo systemd-analyze verify /etc/systemd/system/sentry-agent.service
+
+  package:
+    name: Package + checksums
+    runs-on: ubuntu-latest
+    needs: [validate]
+    permissions:
+      contents: write   # for release asset upload on tags
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve version
+        id: version
+        run: |
+          ref="${GITHUB_REF}"
+          if [[ "$ref" == refs/tags/agent-v* ]]; then
+            version="${ref#refs/tags/agent-v}"
+          else
+            version="0.0.0+${GITHUB_SHA::8}"
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Stage release dir
+        run: |
+          mkdir -p dist/linux
+          cp agent/installer/linux/install.sh           dist/linux/
+          cp agent/installer/linux/uninstall.sh         dist/linux/
+          cp agent/installer/linux/sentry-agent.service dist/linux/
+          cp agent/installer/linux/README.md            dist/linux/
+          chmod +x dist/linux/install.sh dist/linux/uninstall.sh
+
+      - name: Emit SHA256SUMS
+        working-directory: dist/linux
+        run: |
+          # The *.sha256 sidecar lets customers run
+          #     sha256sum -c install.sh.sha256
+          # independently of GPG. SHA256SUMS collects everything in
+          # one manifest for release-asset deployers.
+          for f in install.sh uninstall.sh sentry-agent.service README.md; do
+            sha256sum "$f" > "${f}.sha256"
+          done
+          sha256sum install.sh uninstall.sh sentry-agent.service README.md \
+            > SHA256SUMS
+          cat SHA256SUMS
+
+      - name: GPG sign SHA256SUMS
+        if: ${{ secrets.GPG_PRIVATE_KEY != '' }}
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+        run: |
+          echo "$GPG_PRIVATE_KEY" | gpg --batch --import
+          gpg --batch --yes --pinentry-mode loopback --passphrase "$GPG_PASSPHRASE" \
+              --detach-sign --armor --output dist/linux/SHA256SUMS.asc \
+              dist/linux/SHA256SUMS
+
+      - name: Upload installer bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: sentry-agent-linux-${{ steps.version.outputs.version }}
+          path: dist/linux/*
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Attach to release
+        if: startsWith(github.ref, 'refs/tags/agent-v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/linux/install.sh
+            dist/linux/install.sh.sha256
+            dist/linux/uninstall.sh
+            dist/linux/uninstall.sh.sha256
+            dist/linux/sentry-agent.service
+            dist/linux/sentry-agent.service.sha256
+            dist/linux/SHA256SUMS
+            dist/linux/SHA256SUMS.asc

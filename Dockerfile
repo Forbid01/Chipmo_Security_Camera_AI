@@ -29,12 +29,17 @@ RUN apt-get update && apt-get install -y \
     libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
+RUN groupadd --system --gid 1000 appuser \
+    && useradd --system --uid 1000 --gid appuser --create-home --home-dir /home/appuser appuser
+
 WORKDIR /app
 
 COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
 COPY --from=builder /usr/local/bin /usr/local/bin
-COPY . .
-COPY --from=frontend-builder /app/shoplift_detector/dist ./shoplift_detector/dist
+COPY --chown=appuser:appuser . .
+COPY --from=frontend-builder --chown=appuser:appuser /app/shoplift_detector/dist ./shoplift_detector/dist
+
+USER appuser
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')" || exit 1

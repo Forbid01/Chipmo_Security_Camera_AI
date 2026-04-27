@@ -34,8 +34,9 @@ def test_rate_limit_category_values_match_api_spec():
 
 def test_rate_limit_categories_are_enumerable():
     # RATE_LIMIT_CATEGORIES lets an observability task iterate every
-    # configured budget, e.g. to export it as a metric.
-    assert len(rate_limiting.RATE_LIMIT_CATEGORIES) == 6
+    # configured budget, e.g. to export it as a metric. Count grows
+    # by 2 when INSTALLER_ISSUE + INSTALLER_REDEEM landed with T4-02.
+    assert len(rate_limiting.RATE_LIMIT_CATEGORIES) == 8
 
 
 # ---------------------------------------------------------------------------

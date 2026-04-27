@@ -163,12 +163,14 @@
 - 30-min state persist in Redis (`tenant:{uuid}:store:{id}:person:{pid}`)
 - Bie biLeg (gait) + height fallback (P1 priority)
 
-#### WS-8: VLM verification (FR-4)
-- Qwen2.5-VL 7B 4-bit quantized на vLLM
-- Alert-д action description generate хийх
-- `rag_decision` + `vlm_decision` columns бэлэн
-- Suppression pipeline (YOLO → RAG neighbor check → VLM verify → alert)
-- VLM latency target <500ms per verdict
+#### WS-8: VLM verification (FR-4) ✅ **DONE** (Apr 2026)
+- ✅ Qwen2.5-VL 7B on `transformers` (vLLM 4-bit quant deferred to GPU deploy ops)
+- ✅ Alert-д action description generate (`vlm_service.describe_alert` → caption + structured JSON)
+- ✅ `rag_decision` + `vlm_decision` columns бичигдэж байна (`ai_service._dispatch_alert`)
+- ✅ Suppression pipeline: YOLO → RAG (`rag_retriever` on pgvector) → VLM verify (`vlm_service`) → alert (`rag_vlm_pipeline`)
+- ⚠️ VLM latency <500ms target — current 1-5s on single GPU; achievable with vLLM batching (P2 follow-up)
+- ➕ Bonus: RAG corpus CRUD API (`/api/v1/stores/{id}/rag-corpus`) + frontend (`RagVlmSettings`, `AlertVlmDetail`, `AlertVerdictBadges`)
+- ➕ Migration `20260427_01` (`rag_corpus`, `vlm_annotations`) + Qdrant compose service + `Dockerfile.gpu`
 
 #### WS-9: Mobile app (FR-6, FR-8)
 - React Native codebase
@@ -276,8 +278,9 @@
 | **MediaMTX + WebRTC** | ❌ MJPEG only | P2 WS-10 | Needed for <2s latency |
 | **OSNet / FastReID** | ❌ | P2 WS-7 | Cross-camera tracking |
 | **ByteTrack** | ✅ Бэлэн | — | Already in inference worker |
-| **Qwen2.5-VL (vLLM)** | ❌ Schema only | P2 WS-8 | `rag_decision`/`vlm_decision` columns |
-| **Qdrant** | ❌ | P2 WS-7 | Per-tenant collection |
+| **Qwen2.5-VL (vLLM)** | ✅ transformers runtime + RAG pipeline | P2 WS-8 | `vlm_service.py`, `rag_vlm_pipeline.py`, `Dockerfile.gpu`. vLLM 4-bit quant — GPU deploy ops. |
+| **Qdrant** | ❌ Replaced by pgvector | — | RAG corpus moved into Postgres via pgvector (migration `20260427_02`). One service instead of two. Re-ID still maps to a separate vector store when WS-7 ships. |
+| **pgvector** | ✅ rag_corpus.embedding column wired | P2 WS-8 | `intfloat/multilingual-e5-small` (384-dim) + HNSW cosine index. Lives in the same Postgres as the rest of app data. |
 | **MinIO** | ⚠️ S3/Cloudinary | P2 WS-11 | Migrate clip storage to MinIO |
 | **PostgreSQL + TimescaleDB** | ✅ Optional hypertable | — | Opt-in flag |
 | **Redis Streams** | ⚠️ Redis container байгаа, Streams pattern байхгүй | P1 WS-1 | Tenant state + rate limit bucket |

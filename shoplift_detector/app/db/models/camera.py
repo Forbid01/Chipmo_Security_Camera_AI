@@ -1,6 +1,7 @@
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import Boolean, ForeignKey, Integer, String, Text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .base import Base, TimestampMixin
@@ -22,6 +23,12 @@ class Camera(Base, TimestampMixin):
     )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     is_ai_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+    # Shelf ROI polygons (normalized 0..1 coords). Empty list = fall back to
+    # COCO class detection. See alembic 20260423_01 for schema.
+    shelf_zones: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSONB, nullable=False, default=list, server_default="[]"
+    )
 
     # Legacy support
     organization_id: Mapped[int | None] = mapped_column(

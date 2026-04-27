@@ -35,3 +35,11 @@ faces/
 test.db
 .claude
 .DS_Store
+
+# Self-hosted VLM microservice — built separately from
+# vlm_server/Dockerfile on a GPU host. Bundling it into the main image
+# (Railway / Dockerfile) only bloats the build with unused code.
+vlm_server/
+
+# GPU image is a separate build target.
+Dockerfile.gpu

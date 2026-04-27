@@ -1,0 +1,71 @@
+#!/usr/bin/env bash
+#
+# postinstall — runs after the pkg payload is written.
+#   1. Verifies Docker Desktop is present; offers brew install fallback
+#      (non-interactive via /bin/sh so it works from the Installer GUI).
+#   2. Ensures /etc/sentry-agent exists with 0750 owned by root:wheel.
+#   3. Pulls the agent image so `docker run` on first launchd start
+#      doesn't have to download over potentially slow customer
+#      network at boot time.
+#   4. Loads the LaunchDaemon.
+
+set -Eeuo pipefail
+
+LOG=/var/log/sentry-agent-postinstall.log
+mkdir -p /var/log
+exec >>"$LOG" 2>&1
+echo "[postinstall] $(date) starting"
+
+IMAGE="${SENTRY_IMAGE:-ghcr.io/tuguldur0107/sentry-agent:latest}"
+PLIST=/Library/LaunchDaemons/mn.sentry.agent.plist
+
+ensure_dir() {
+    install -d -m 0750 -o root -g wheel /etc/sentry-agent
+    install -d -m 0755 /var/log/sentry-agent
+}
+
+detect_docker() {
+    if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
+        return 0
+    fi
+    return 1
+}
+
+install_docker_via_brew() {
+    # Homebrew cask is the macOS idiomatic path. Fall through with a
+    # helpful log message if brew isn't installed — launchd will
+    # restart the agent on a cadence so the customer can install
+    # Docker Desktop by hand and we'll pick up automatically.
+    if ! command -v brew >/dev/null 2>&1; then
+        echo "[postinstall] Homebrew not found; please install Docker Desktop manually: https://www.docker.com/products/docker-desktop/"
+        return 0
+    fi
+    # Run brew as the console user so its homedir cache is used.
+    CONSOLE_USER="$(stat -f '%Su' /dev/console)"
+    sudo -u "$CONSOLE_USER" brew install --cask docker || true
+}
+
+pull_image() {
+    if detect_docker; then
+        docker pull "$IMAGE" >/dev/null 2>&1 || true
+    fi
+}
+
+load_daemon() {
+    launchctl bootstrap system "$PLIST" || launchctl load "$PLIST"
+    launchctl enable system/mn.sentry.agent || true
+    launchctl kickstart -k system/mn.sentry.agent || true
+}
+
+ensure_dir
+
+if ! detect_docker; then
+    echo "[postinstall] Docker Desktop not found; attempting brew cask install."
+    install_docker_via_brew
+fi
+
+pull_image
+load_daemon
+
+echo "[postinstall] done"
+exit 0

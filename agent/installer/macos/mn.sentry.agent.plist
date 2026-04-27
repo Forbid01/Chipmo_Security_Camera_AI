@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>mn.sentry.agent</string>
+
+    <key>Program</key>
+    <string>/usr/local/sentry-agent/run-agent.sh</string>
+
+    <!--
+        launchd restarts us whenever we exit; RestartSec is implicit at
+        10s. The run-agent.sh wrapper invokes `docker run` in the
+        foreground so launchd's crash policy handles container crashes
+        consistently with the Linux systemd unit (T4-04).
+    -->
+    <key>RunAtLoad</key>
+    <true/>
+
+    <key>KeepAlive</key>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+    </dict>
+
+    <key>ThrottleInterval</key>
+    <integer>10</integer>
+
+    <key>StandardOutPath</key>
+    <string>/var/log/sentry-agent/agent.log</string>
+
+    <key>StandardErrorPath</key>
+    <string>/var/log/sentry-agent/agent.err</string>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>SENTRY_IMAGE</key>
+        <string>@SENTRY_IMAGE@</string>
+        <key>SENTRY_VERSION</key>
+        <string>@SENTRY_VERSION@</string>
+    </dict>
+</dict>
+</plist>

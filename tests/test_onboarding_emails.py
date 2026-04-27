@@ -54,9 +54,11 @@ def test_every_schedule_entry_has_label():
 # ---------------------------------------------------------------------------
 
 def test_day_zero_email_mentions_store_name_and_welcome():
-    msg = day_0_welcome(_tenant())
+    tenant = _tenant()
+    msg = day_0_welcome(tenant)
     assert "Номин" in msg.text_body
     assert "тавтай морил" in msg.text_body.lower()
+    assert f"t.me/sentry_bot?start={tenant['tenant_id']}" in msg.text_body
     assert msg.html_body is not None
 
 

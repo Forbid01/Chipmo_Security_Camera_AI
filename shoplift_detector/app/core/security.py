@@ -61,7 +61,9 @@ def get_password_hash(password: str) -> str:
 
 def create_access_token(data: dict, expires_delta: timedelta | None = None) -> str:
     to_encode = data.copy()
-    expire = datetime.now(UTC) + (expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
+    now = datetime.now(UTC)
+    expire = now + (expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
+    to_encode.setdefault("iat", int(now.timestamp()))
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
@@ -110,6 +112,8 @@ def _decode_token(token: str) -> dict:
             "org_id": payload.get("org_id"),
             "role": payload.get("role"),
             "user_id": payload.get("user_id"),
+            "tenant_id": payload.get("tenant_id"),
+            "iat": payload.get("iat"),
         }
     except (jwt.PyJWTError, jwt.ExpiredSignatureError) as e:
         raise credentials_exception from e

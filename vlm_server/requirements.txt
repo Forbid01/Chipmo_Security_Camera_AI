@@ -1,0 +1,22 @@
+# Minimal dependency set for the standalone VLM microservice.
+# Intentionally narrower than the main app's requirements.txt so the
+# GPU host doesn't pull in asyncpg / sentry / ultralytics — every
+# extra wheel on a public-facing GPU box is more attack surface.
+
+fastapi>=0.110.0
+uvicorn[standard]>=0.27.0
+pydantic>=2.0
+python-multipart
+
+# Image handling
+numpy
+opencv-python-headless
+pillow>=10.0.0
+
+# Model runtime. torch is intentionally NOT pinned to a specific CUDA
+# build here — pick the right wheel via the install command in
+# Dockerfile.vlm or your host's instructions.
+torch
+torchvision
+transformers>=4.45.0
+accelerate>=0.30.0

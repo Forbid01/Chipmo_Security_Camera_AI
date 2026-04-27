@@ -176,6 +176,27 @@ class TenantRepository:
         )
         await self.db.commit()
 
+    async def get_tenant_id_for_organization(
+        self, organization_id: int | None
+    ) -> str | None:
+        """Resolve a legacy organization_id to its tenant UUID via the
+        T1-02 map table. Returns a canonical string form or None when
+        the org has no tenant row yet (pre-migration shells).
+        """
+        if organization_id is None:
+            return None
+        query = text("""
+            SELECT tenant_id
+              FROM organization_tenant_map
+             WHERE organization_id = :organization_id
+             LIMIT 1
+        """)
+        result = await self.db.execute(
+            query, {"organization_id": organization_id}
+        )
+        row = result.scalar_one_or_none()
+        return str(row) if row is not None else None
+
     async def get_by_id(self, tenant_id: UUID | str) -> dict[str, Any] | None:
         query = text("""
             SELECT tenant_id,

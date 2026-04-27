@@ -9,6 +9,15 @@ from pydantic_settings import BaseSettings
 # import touches the filesystem.
 os.environ.setdefault("YOLO_CONFIG_DIR", "/tmp")
 
+# Same problem for the HuggingFace cache (used by sentence-transformers /
+# transformers when RAG or VLM is enabled). The first model download
+# would otherwise fail with PermissionError on Railway. /tmp persists for
+# the container lifetime which is fine — the wheel is small enough that
+# a cold-start re-download is acceptable.
+os.environ.setdefault("HF_HOME", "/tmp/hf_cache")
+os.environ.setdefault("TRANSFORMERS_CACHE", "/tmp/hf_cache")
+os.environ.setdefault("SENTENCE_TRANSFORMERS_HOME", "/tmp/hf_cache")
+
 
 class Settings(BaseSettings):
     # App
@@ -72,6 +81,56 @@ class Settings(BaseSettings):
     AI_INPUT_SIZE: int = 640
     AI_QUEUE_MAXSIZE: int = 8
 
+    # --- RAG / Embeddings ---------------------------------------------------
+    # Multilingual e5 covers Mongolian + English store policy text. The
+    # service module loads the model lazily on first use so unit tests
+    # and tenants with RAG disabled don't pay the import cost.
+    #
+    # Vectors live inside Postgres via pgvector — no separate vector
+    # service. The matching alembic migration installs the extension
+    # and adds the embedding column.
+    #
+    # Default OFF: a fresh deploy without the migration applied would
+    # otherwise raise on every alert. Flip to true *after* the
+    # migration has run and the embedding model is reachable from the
+    # deploy environment.
+    RAG_ENABLED: bool = False
+    RAG_MODEL_NAME: str = "intfloat/multilingual-e5-small"
+    RAG_TOP_K: int = 5
+    RAG_DEVICE: str = "cpu"  # "cuda" if available; embedding is cheap on CPU
+
+    # --- Vision-Language Model (Qwen2.5-VL) ---------------------------------
+    # Heavy GPU model — the service guards against missing CUDA and
+    # short-circuits to a "not_run" verdict when VLM_ENABLED is False
+    # so deployments without a GPU stay functional.
+    #
+    # Two execution modes (selected at runtime by VLM_REMOTE_URL):
+    #
+    #   - **Local**: VLM_REMOTE_URL is empty. transformers loads
+    #     Qwen2.5-VL in-process. Requires CUDA on the same host as the
+    #     main app. Used in dev / single-box deployments.
+    #
+    #   - **Remote**: VLM_REMOTE_URL points at a GPU host running the
+    #     `vlm_server/` microservice. The main app posts the frame +
+    #     description via HTTP and awaits a JSON verdict. This is the
+    #     production pattern: keep the main API on a small CPU box
+    #     (Railway, Fly, etc.) and put the heavy model on a dedicated
+    #     GPU server you control.
+    #
+    # VLM_API_KEY authenticates the HTTP call between the two services
+    # via a Bearer token. NEVER leave it empty in remote mode — without
+    # auth the GPU endpoint is reachable by anyone who finds the URL.
+    VLM_ENABLED: bool = False
+    VLM_MODEL_NAME: str = "Qwen/Qwen2.5-VL-7B-Instruct"
+    VLM_DEVICE: str = "cuda"
+    VLM_TIMEOUT_SECONDS: float = 30.0
+    VLM_MAX_NEW_TOKENS: int = 256
+    VLM_DTYPE: str = "bfloat16"  # "float16" on older GPUs
+
+    # Remote VLM microservice. Empty string = local in-process mode.
+    VLM_REMOTE_URL: str = ""
+    VLM_API_KEY: str = ""
+
     # RTSP reconnect
     RTSP_RECONNECT_BASE: float = 1.0
     RTSP_RECONNECT_MAX: float = 60.0
@@ -90,6 +149,10 @@ class Settings(BaseSettings):
     # Storage backend: local | cloudinary | s3
     STORAGE_BACKEND: str = "local"
     PUBLIC_BASE_URL: str = ""
+
+    # Installer asset CDN (T4-06). The `GET /installer/download`
+    # endpoint signs a redirect to `{INSTALLER_BASE_URL}/{os}/...`.
+    INSTALLER_BASE_URL: str = "https://downloads.sentry.mn"
     CLOUDINARY_URL: str | None = None
     CLOUDINARY_FOLDER: str = "chipmo/alerts"
     S3_BUCKET: str | None = None
@@ -113,6 +176,10 @@ class Settings(BaseSettings):
     TWILIO_ACCOUNT_SID: str | None = None
     TWILIO_AUTH_TOKEN: str | None = None
     TWILIO_FROM_NUMBER: str | None = None
+
+    # FCM push notifications — T5-07. Unset → the escalation
+    # dispatcher falls through to a recording (in-memory) sender.
+    FCM_SERVER_KEY: str | None = None
 
     # PostHog server-side capture (T2-09). Unset → events go to the
     # null recorder (no network I/O).

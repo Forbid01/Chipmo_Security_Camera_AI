@@ -1,13 +1,17 @@
 from __future__ import annotations
 
 import os
+from typing import Annotated
 
 from app.core.config import ALERTS_DIR
 from app.core.security import CurrentUser, SuperAdmin
+from app.core.tenancy import require_alert_access
+from app.db.models.vlm_annotation import VlmAnnotation
 from app.db.repository.alerts import AlertRepository
 from app.db.session import DB
 from app.schemas.common import APIResponse
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
+from sqlalchemy import select
 
 router = APIRouter()
 
@@ -81,3 +85,32 @@ async def delete_alert(alert_id: int, admin: SuperAdmin, db: DB):
     if not success:
         raise HTTPException(status_code=404, detail="Alert олдсонгүй")
     return APIResponse(message="Alert устгагдлаа")
+
+
+@router.get("/{alert_id}/vlm-annotation")
+async def get_vlm_annotation(
+    alert_id: int,
+    db: DB,
+    alert: Annotated[dict, Depends(require_alert_access)],
+):
+    """Return the VLM caption + reasoning for an alert.
+
+    Tenant-guarded by `require_alert_access`. Returns 404 when no
+    annotation row exists yet (the VLM persist is async, so a fresh
+    alert may briefly have no row).
+    """
+    result = await db.execute(
+        select(VlmAnnotation).where(VlmAnnotation.alert_id == alert_id)
+    )
+    row = result.scalar_one_or_none()
+    if row is None:
+        raise HTTPException(status_code=404, detail="VLM annotation хараахан бэлэн биш")
+    return {
+        "alert_id": row.alert_id,
+        "model_name": row.model_name,
+        "caption": row.caption,
+        "confidence": row.confidence,
+        "reasoning": row.reasoning,
+        "latency_ms": row.latency_ms,
+        "created_at": row.created_at,
+    }

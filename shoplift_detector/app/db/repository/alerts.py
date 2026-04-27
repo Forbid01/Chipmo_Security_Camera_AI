@@ -117,6 +117,7 @@ class AlertRepository:
         vlm_decision: str | None = None,
         suppressed: bool | None = None,
         suppressed_reason: str | None = None,
+        severity: str | None = None,
     ) -> int | None:
         # Deduplication is owned by AlertManager (alert_state table). This
         # repository trusts that the caller has already passed dedup; a
@@ -141,15 +142,17 @@ class AlertRepository:
             ("confidence_score", confidence_score, "score"),
         ]
 
-        # Pipeline v2 columns (T02-14). Each is additive: the column
-        # discovery guard below skips it on pre-migration schemas and
-        # skips it when the caller didn't pass a value.
+        # Pipeline v2 columns (T02-14) + severity (T5-02). Each is
+        # additive: the column discovery guard below skips it on pre-
+        # migration schemas and skips it when the caller didn't pass a
+        # value.
         pipeline_values: list[tuple[str, Any, str]] = [
             ("person_track_id", person_track_id, "ptid"),
             ("rag_decision", rag_decision, "rag"),
             ("vlm_decision", vlm_decision, "vlm"),
             ("suppressed", suppressed, "suppressed"),
             ("suppressed_reason", suppressed_reason, "suppressed_reason"),
+            ("severity", severity, "severity"),
         ]
 
         for column_name, value, param_name in (*optional_values, *pipeline_values):
@@ -173,6 +176,73 @@ class AlertRepository:
         await self.db.commit()
         row = result.fetchone()
         return row[0] if row else None
+
+    async def mark_acknowledged(
+        self,
+        alert_id: int,
+        *,
+        chat_id: str,
+    ) -> bool:
+        """T5-05 — record the Telegram inline-button ack.
+
+        Idempotent: a second click from the same or a different chat
+        keeps the *original* acknowledgement timestamp. Returns True
+        when this call flipped the row from unacknowledged to
+        acknowledged, False when the row was already ack'd or didn't
+        exist. Callers use the bool to decide whether to broadcast a
+        "handled" notification to the other subscribers.
+
+        Tolerates the pre-migration schema by returning False — the
+        caller treats that as "no persistence" and skips the broadcast.
+        """
+        alerts_columns = await self._get_table_columns("alerts")
+        if "acknowledged_at" not in alerts_columns:
+            return False
+        query = text(
+            """
+            UPDATE alerts
+            SET acknowledged_at = now(),
+                acknowledged_by_chat_id = :chat_id
+            WHERE id = :id AND acknowledged_at IS NULL
+            """
+        )
+        result = await self.db.execute(query, {"id": alert_id, "chat_id": chat_id})
+        await self.db.commit()
+        return result.rowcount > 0
+
+    async def get_by_id(self, alert_id: int) -> dict[str, Any] | None:
+        """Single-row fetch by primary key. Used by handlers that need
+        to check tenant ownership before serving a nested resource
+        (e.g. `GET /alerts/{id}/escalations`)."""
+        query = text(
+            """
+            SELECT id, organization_id, store_id, camera_id,
+                   event_time, image_path, description,
+                   confidence_score, reviewed
+            FROM alerts
+            WHERE id = :id
+            """
+        )
+        result = await self.db.execute(query, {"id": alert_id})
+        row = result.mappings().fetchone()
+        return dict(row) if row else None
+
+    async def get_ack_state(self, alert_id: int) -> dict[str, Any] | None:
+        """Fetch just the ack fields — used by the callback handler to
+        render "already acknowledged by X" without a full row read."""
+        alerts_columns = await self._get_table_columns("alerts")
+        if "acknowledged_at" not in alerts_columns:
+            return None
+        query = text(
+            """
+            SELECT acknowledged_at, acknowledged_by_chat_id
+            FROM alerts
+            WHERE id = :id
+            """
+        )
+        result = await self.db.execute(query, {"id": alert_id})
+        row = result.mappings().fetchone()
+        return dict(row) if row else None
 
     async def mark_suppressed(
         self,

@@ -145,6 +145,67 @@ class TestJWTTokens:
         with pytest.raises(HTTPException):
             _decode_token("this.is.not.a.jwt")
 
+    # --- T7-01: tenant_id + iat payload claims ---
+
+    @pytest.mark.security
+    def test_token_includes_iat_claim(self):
+        """create_access_token stamps an integer issued-at timestamp."""
+        import time
+
+        before = int(time.time())
+        token = create_access_token(data={
+            "sub": "alice",
+            "role": "user",
+            "org_id": 1,
+            "user_id": 1,
+        })
+        after = int(time.time())
+        decoded = _decode_token(token)
+        assert isinstance(decoded["iat"], int)
+        assert before <= decoded["iat"] <= after
+
+    @pytest.mark.security
+    def test_token_carries_tenant_id_claim(self):
+        """tenant_id roundtrips through encode/decode as a UUID string."""
+        tenant_uuid = "11111111-2222-3333-4444-555555555555"
+        token = create_access_token(data={
+            "sub": "alice",
+            "role": "user",
+            "org_id": 5,
+            "user_id": 10,
+            "tenant_id": tenant_uuid,
+        })
+        decoded = _decode_token(token)
+        assert decoded["tenant_id"] == tenant_uuid
+
+    @pytest.mark.security
+    def test_legacy_token_without_tenant_id_still_decodes(self):
+        """Backward-compat: tokens minted before T7-01 lack tenant_id.
+        Decoder must return tenant_id=None rather than raising, so
+        rolling deployments don't log everyone out."""
+        token = create_access_token(data={
+            "sub": "legacy_user",
+            "role": "user",
+            "org_id": 7,
+            "user_id": 42,
+        })
+        decoded = _decode_token(token)
+        assert decoded["tenant_id"] is None
+        assert decoded["username"] == "legacy_user"
+        assert decoded["org_id"] == 7
+
+    @pytest.mark.security
+    def test_caller_supplied_iat_is_preserved(self):
+        """If a caller passes an explicit iat we don't overwrite it —
+        setdefault semantics matter for tests and token replay paths."""
+        token = create_access_token(data={
+            "sub": "alice",
+            "role": "user",
+            "iat": 1_700_000_000,
+        })
+        decoded = _decode_token(token)
+        assert decoded["iat"] == 1_700_000_000
+
 
 # ---------------------------------------------------------------------------
 # Password validation

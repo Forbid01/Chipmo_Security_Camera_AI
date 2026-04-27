@@ -239,6 +239,63 @@ export const deleteAlert = async (id) => {
 };
 
 // ============================================
+// STORE SETTINGS (per-store AI config — RAG / VLM / severity / FPS)
+// ============================================
+
+export const getStoreSettings = async (storeId) => {
+  const response = await api.get(`/api/v1/stores/${storeId}/settings`);
+  return response.data;
+};
+
+export const patchStoreSettings = async (storeId, patch) => {
+  const response = await api.patch(`/api/v1/stores/${storeId}/settings`, patch);
+  return response.data;
+};
+
+// ============================================
+// VLM ANNOTATIONS (Phase 2)
+// ============================================
+
+// Returns the cached Qwen2.5-VL output for an alert. The backend
+// persists this asynchronously after the alert is created, so a 404
+// just means "not ready yet" — callers should retry, not surface as
+// an error.
+export const getAlertVlmAnnotation = async (alertId) => {
+  try {
+    const response = await api.get(`/api/v1/alerts/${alertId}/vlm-annotation`);
+    return response.data;
+  } catch (err) {
+    if (err.response?.status === 404) return null;
+    throw err;
+  }
+};
+
+// ============================================
+// RAG CORPUS (Phase 1)
+// ============================================
+
+export const listRagCorpus = async (storeId, params = {}) => {
+  const response = await api.get(
+    `/api/v1/stores/${storeId}/rag-corpus`,
+    { params },
+  );
+  return response.data;
+};
+
+export const createRagCorpus = async (storeId, payload) => {
+  const response = await api.post(
+    `/api/v1/stores/${storeId}/rag-corpus`,
+    payload,
+  );
+  return response.data;
+};
+
+export const deleteRagCorpus = async (docId) => {
+  const response = await api.delete(`/api/v1/rag-corpus/${docId}`);
+  return response.data;
+};
+
+// ============================================
 // MY CAMERAS (User-level camera management)
 // ============================================
 

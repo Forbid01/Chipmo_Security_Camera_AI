@@ -1,0 +1,68 @@
+# GPU-enabled image for deployments that run Qwen2.5-VL.
+#
+# The base CPU-only Dockerfile stays the default for Railway / cheap
+# cloud hosts; this image is for self-hosted boxes with an NVIDIA GPU.
+# Build:
+#   docker build -f Dockerfile.gpu -t chipmo-sentry-gpu .
+# Run (requires nvidia-container-toolkit on the host):
+#   docker run --gpus all -p 8000:8000 chipmo-sentry-gpu
+
+# CUDA 12.1 + cuDNN matches the wheel matrix shipped with the torch
+# version pinned in requirements.txt.
+FROM nvidia/cuda:12.1.1-cudnn8-runtime-ubuntu22.04 AS runtime
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1 \
+    HF_HOME=/home/appuser/.cache/huggingface \
+    YOLO_CONFIG_DIR=/tmp
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        python3.11 \
+        python3.11-venv \
+        python3-pip \
+        libgl1 \
+        libglib2.0-0 \
+        libstdc++6 \
+        ffmpeg \
+        libpq-dev \
+        ca-certificates \
+        curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && update-alternatives --install /usr/bin/python python /usr/bin/python3.11 1 \
+    && update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.11 1
+
+# Frontend bundle is built in a separate stage so the GPU image doesn't
+# carry node toolchains.
+FROM node:20-alpine AS frontend-builder
+WORKDIR /app/security-web
+COPY security-web/package*.json ./
+RUN npm ci
+COPY security-web/ ./
+RUN npm run build
+
+FROM runtime AS final
+
+RUN groupadd --system --gid 1000 appuser \
+    && useradd --system --uid 1000 --gid appuser --create-home --home-dir /home/appuser appuser
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir --upgrade pip \
+    && pip install --no-cache-dir -r requirements.txt
+
+COPY --chown=appuser:appuser . .
+COPY --from=frontend-builder --chown=appuser:appuser /app/shoplift_detector/dist ./shoplift_detector/dist
+
+# Pre-create cache so the non-root user can write model downloads.
+RUN mkdir -p /home/appuser/.cache/huggingface \
+    && chown -R appuser:appuser /home/appuser/.cache
+
+USER appuser
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')" || exit 1
+
+CMD ["sh", "-c", "alembic upgrade head && uvicorn shoplift_detector.main:app --host 0.0.0.0 --port 8000"]

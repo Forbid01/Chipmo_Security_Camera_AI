@@ -3,14 +3,20 @@ from app.core.tenancy_context import apply_tenant_context
 from fastapi import APIRouter, Depends
 
 from .admin import router as admin_router
+from .agents import router as agents_router
 from .alerts import router as alerts_router
 from .auth import router as auth_router
 from .cameras import router as cameras_router
+from .escalations import router as escalations_router
 from .feedback import router as feedback_router
+from .installer import router as installer_router
 from .metrics import router as metrics_router
 from .my_cameras import router as my_cameras_router
 from .onboarding import auth_signup_router, onboarding_router
+from .onboarding_status import router as onboarding_status_router
 from .pricing import router as pricing_router
+from .push import router as push_router
+from .rag_corpus import router as rag_corpus_router
 from .stores import router as stores_router
 from .telegram import router as telegram_router
 from .tenants import router as tenants_router
@@ -38,8 +44,14 @@ api_router.include_router(
 api_router.include_router(
     onboarding_router, prefix="/onboarding", tags=["Onboarding"]
 )
+api_router.include_router(
+    onboarding_status_router, prefix="/onboarding", tags=["Onboarding"]
+)
 api_router.include_router(admin_router, prefix="/admin", tags=["Admin"])
 api_router.include_router(alerts_router, prefix="/alerts", tags=["Alerts"])
+api_router.include_router(
+    escalations_router, prefix="/alerts", tags=["Alert Escalations"]
+)
 api_router.include_router(cameras_router, prefix="/cameras", tags=["Cameras"])
 api_router.include_router(stores_router, prefix="/stores", tags=["Stores"])
 api_router.include_router(tenants_router, prefix="/tenants", tags=["Tenants"])
@@ -48,4 +60,10 @@ api_router.include_router(feedback_router, prefix="/feedback", tags=["AI Feedbac
 api_router.include_router(my_cameras_router, prefix="/my/cameras", tags=["My Cameras"])
 api_router.include_router(telegram_router, prefix="/telegram", tags=["Telegram Notifications"])
 api_router.include_router(pricing_router, prefix="/pricing", tags=["Pricing"])
+api_router.include_router(
+    installer_router, prefix="/installer", tags=["Installer"]
+)
+api_router.include_router(agents_router, prefix="/agents", tags=["Agents"])
+api_router.include_router(push_router, prefix="/push", tags=["Push Notifications"])
 api_router.include_router(metrics_router, prefix="/metrics", tags=["Observability"])
+api_router.include_router(rag_corpus_router, tags=["RAG Corpus"])

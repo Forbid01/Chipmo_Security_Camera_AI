@@ -21,7 +21,10 @@ services:
       - chipmo-net
 
   postgres:
-    image: postgres:15-alpine
+    # pgvector/pgvector ships the vector extension preinstalled. The
+    # alembic migration `CREATE EXTENSION IF NOT EXISTS vector` runs
+    # against this image without superuser gymnastics.
+    image: pgvector/pgvector:pg15
     container_name: chipmo-postgres
     restart: unless-stopped
     environment:

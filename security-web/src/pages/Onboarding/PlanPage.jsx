@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { ANALYTICS_EVENTS, trackEvent } from '../../services/analytics';
 import { showStuckPromptOnce } from '../../services/liveChat';
 import { useIdleTimer } from '../../hooks/useIdleTimer';
@@ -12,6 +13,7 @@ const formatMnt = (value) =>
   `₮${Number(value || 0).toLocaleString('mn-MN')}`;
 
 export default function PlanPage() {
+  const navigate = useNavigate();
   const [cameraCount, setCameraCount] = useState(5);
   const [storeCount, setStoreCount] = useState(1);
   const [location, setLocation] = useState('ub');
@@ -28,8 +30,10 @@ export default function PlanPage() {
 
   useEffect(() => {
     const controller = new AbortController();
-    setLoading(true);
-    setError(null);
+    queueMicrotask(() => {
+      setLoading(true);
+      setError(null);
+    });
 
     const params = new URLSearchParams({
       camera_count: String(cameraCount),
@@ -126,6 +130,7 @@ export default function PlanPage() {
             store_count: picker?.store_count,
             annual_prepay: annualPrepay,
           });
+          navigate('/ready');
         }}
               />
             ))}

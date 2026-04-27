@@ -7,6 +7,8 @@ import Register from './pages/Register';
 import SignupPage from './pages/Onboarding/SignupPage';
 import VerifyPage from './pages/Onboarding/VerifyPage';
 import PlanPage from './pages/Onboarding/PlanPage';
+import ReadyPage from './pages/Onboarding/ReadyPage';
+import ConnectCamerasPage from './pages/Onboarding/ConnectCamerasPage';
 import Dashboard from './pages/Dashboard';
 import DashboardAdmin from './pages/DashboardAdmin';
 import Settings from './pages/Settings';
@@ -42,6 +44,8 @@ function App() {
         <Route path="/signup" element={<SignupPage />} />
         <Route path="/verify" element={<VerifyPage />} />
         <Route path="/plan" element={<PlanPage />} />
+        <Route path="/ready" element={<ReadyPage />} />
+        <Route path="/connect-cameras" element={<ConnectCamerasPage />} />
 
         <Route 
           path="/forgot-password" 

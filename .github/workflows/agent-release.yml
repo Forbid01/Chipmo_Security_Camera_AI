@@ -1,0 +1,143 @@
+name: Agent Release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "agent/**"
+      - ".github/workflows/agent-release.yml"
+    tags:
+      - "agent-v*"
+  workflow_dispatch:
+    inputs:
+      push:
+        description: "Push to GHCR (true) or build-only smoke test (false)"
+        required: false
+        default: "false"
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository_owner }}/sentry-agent
+  IMAGE_SIZE_LIMIT_MB: 500
+
+jobs:
+  build-and-publish:
+    name: Build, push, sign
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      # `id-token: write` is required for cosign keyless (Fulcio OIDC).
+      id-token: write
+
+    outputs:
+      image_digest: ${{ steps.build.outputs.digest }}
+      image_ref: ${{ steps.meta.outputs.tags }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve build metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=semver,pattern={{version}},prefix=agent-v,value=${{ github.ref_name }}
+            type=sha,format=short
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Only log in when we actually intend to push — PR / branch builds
+      # verify the Dockerfile compiles without leaving artifacts in GHCR.
+      - name: Decide whether to push
+        id: push_decision
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "push=${{ github.event.inputs.push }}" >> "$GITHUB_OUTPUT"
+          elif [[ "${{ github.ref }}" == refs/tags/agent-v* ]] || [[ "${{ github.ref }}" == refs/heads/main ]]; then
+            echo "push=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "push=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Log in to GHCR
+        if: steps.push_decision.outputs.push == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build (and optionally push)
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: agent
+          file: agent/Dockerfile
+          platforms: linux/amd64
+          push: ${{ steps.push_decision.outputs.push == 'true' }}
+          load: ${{ steps.push_decision.outputs.push != 'true' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            GIT_SHA=${{ github.sha }}
+            BUILD_DATE=${{ github.event.head_commit.timestamp || github.run_started_at }}
+            VERSION=${{ github.ref_name }}
+          cache-from: type=gha,scope=sentry-agent
+          cache-to: type=gha,mode=max,scope=sentry-agent
+          provenance: true
+          sbom: true
+
+      # Size budget gate — if we ever drift past 500 MB, the release
+      # fails and the team has to justify it explicitly.
+      - name: Verify image size ≤ ${{ env.IMAGE_SIZE_LIMIT_MB }} MB
+        run: |
+          set -euo pipefail
+          # Pull a local copy of the image (push=true skipped --load, so re-fetch).
+          if [[ "${{ steps.push_decision.outputs.push }}" == "true" ]]; then
+            docker pull "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}"
+            IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}"
+          else
+            IMAGE=$(echo "${{ steps.meta.outputs.tags }}" | head -n1)
+          fi
+          SIZE_BYTES=$(docker image inspect --format='{{.Size}}' "$IMAGE")
+          SIZE_MB=$(( SIZE_BYTES / 1024 / 1024 ))
+          echo "image=$IMAGE size=${SIZE_MB}MB limit=${IMAGE_SIZE_LIMIT_MB}MB"
+          echo "size_mb=${SIZE_MB}" >> "$GITHUB_STEP_SUMMARY"
+          if (( SIZE_MB > IMAGE_SIZE_LIMIT_MB )); then
+            echo "::error::Image is ${SIZE_MB} MB, exceeds ${IMAGE_SIZE_LIMIT_MB} MB T4-01 budget"
+            exit 1
+          fi
+
+      - name: Smoke test — `version` subcommand
+        if: steps.push_decision.outputs.push != 'true'
+        run: |
+          IMAGE=$(echo "${{ steps.meta.outputs.tags }}" | head -n1)
+          docker run --rm "$IMAGE" version
+
+      - name: Install cosign
+        if: steps.push_decision.outputs.push == 'true'
+        uses: sigstore/cosign-installer@v3
+        with:
+          cosign-release: "v2.4.1"
+
+      - name: Sign image (keyless, Fulcio)
+        if: steps.push_decision.outputs.push == 'true'
+        env:
+          COSIGN_EXPERIMENTAL: "1"
+          IMAGE_REF: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}
+        run: |
+          cosign sign --yes "$IMAGE_REF"
+
+      - name: Verify signature
+        if: steps.push_decision.outputs.push == 'true'
+        env:
+          IMAGE_REF: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}
+        run: |
+          cosign verify "$IMAGE_REF" \
+            --certificate-identity-regexp="^https://github.com/${{ github.repository }}/\\.github/workflows/agent-release\\.yml@" \
+            --certificate-oidc-issuer="https://token.actions.githubusercontent.com"

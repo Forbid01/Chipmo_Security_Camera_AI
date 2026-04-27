@@ -49,8 +49,13 @@ def _base_email(tenant: dict[str, Any], subject: str, body: str) -> OutgoingEmai
     )
 
 
+def _telegram_bot_link(tenant: dict[str, Any]) -> str:
+    return f"https://t.me/sentry_bot?start={tenant['tenant_id']}"
+
+
 def day_0_welcome(tenant: dict[str, Any]) -> OutgoingEmail:
     greeting = _store_greeting(tenant)
+    telegram_link = _telegram_bot_link(tenant)
     body = (
         f"🎉 {greeting}\n\n"
         "Sentry-д тавтай морил! Дараах 14 хоногт та манай бүх функцийг "
@@ -58,7 +63,8 @@ def day_0_welcome(tenant: dict[str, Any]) -> OutgoingEmail:
         "Эхний алхам:\n"
         "  1. Docker agent суулгах\n"
         "  2. Камераа холбох\n"
-        "  3. Анхны хулгайч илрүүлэхийг хүлээх\n\n"
+        "  3. Анхны хулгайч илрүүлэхийг хүлээх\n"
+        f"  4. Telegram bot-оо холбох: {telegram_link}\n\n"
         "Ямар нэг асуудал тулгарвал Telegram-ийн @sentry_support рүү бичээрэй."
     )
     return _base_email(tenant, "🎉 Sentry-д тавтай морил!", body)

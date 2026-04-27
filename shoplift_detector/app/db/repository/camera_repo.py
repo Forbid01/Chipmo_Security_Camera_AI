@@ -1,3 +1,4 @@
+import json
 import logging
 from typing import Any
 
@@ -121,6 +122,64 @@ class CameraRepository:
             params["org_id"] = organization_id
         query = text(
             f"DELETE FROM cameras WHERE id = :id{tenant_clause}"
+        )
+        result = await self.db.execute(query, params)
+        await self.db.commit()
+        return result.rowcount > 0
+
+    async def get_shelf_zones(
+        self,
+        camera_id: int,
+        *,
+        organization_id: int | None = None,
+    ) -> list[dict[str, Any]]:
+        params: dict[str, Any] = {"id": camera_id}
+        tenant_clause = ""
+        if organization_id is not None:
+            tenant_clause = " AND organization_id = :org_id"
+            params["org_id"] = organization_id
+        query = text(
+            f"SELECT shelf_zones FROM cameras WHERE id = :id{tenant_clause}"
+        )
+        result = await self.db.execute(query, params)
+        row = result.fetchone()
+        if row is None:
+            return []
+        zones = row[0]
+        if isinstance(zones, str):
+            try:
+                zones = json.loads(zones)
+            except json.JSONDecodeError:
+                logger.warning(
+                    "camera_shelf_zones_malformed_json",
+                    extra={"camera_id": camera_id},
+                )
+                return []
+        return zones or []
+
+    async def update_shelf_zones(
+        self,
+        camera_id: int,
+        zones: list[dict[str, Any]],
+        *,
+        organization_id: int | None = None,
+    ) -> bool:
+        """Replace the full shelf_zones array for a camera.
+
+        Tenant pin (`organization_id`) prevents a mis-wired admin handler
+        from overwriting another tenant's zones — same pattern as `update`.
+        """
+        params: dict[str, Any] = {
+            "id": camera_id,
+            "zones": json.dumps(zones),
+        }
+        tenant_clause = ""
+        if organization_id is not None:
+            tenant_clause = " AND organization_id = :org_id"
+            params["org_id"] = organization_id
+        query = text(
+            f"UPDATE cameras SET shelf_zones = CAST(:zones AS JSONB) "
+            f"WHERE id = :id{tenant_clause}"
         )
         result = await self.db.execute(query, params)
         await self.db.commit()

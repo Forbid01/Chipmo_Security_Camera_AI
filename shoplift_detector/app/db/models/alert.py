@@ -62,6 +62,19 @@ class Alert(Base):
     # us migrate the dedup key gradually without breaking legacy writers.
     person_track_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
+    # --- Acknowledgement (T5-05) ----------------------------------------
+    # NULL = unacknowledged. Set by the Telegram inline-button callback
+    # (or a future web-UI button). Dashboard "open alerts" queries filter
+    # on IS NULL — a partial index in migration 20260424_03 makes that fast.
+    acknowledged_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    # Loose TEXT because we want the audit trail to survive even after
+    # the subscriber row gets removed from store_telegram_subscribers.
+    acknowledged_by_chat_id: Mapped[str | None] = mapped_column(
+        Text, nullable=True
+    )
+
     # Relationships
     organization: Mapped[Optional["Organization"]] = relationship(back_populates="alerts")
     store: Mapped[Optional["Store"]] = relationship(back_populates="alerts")

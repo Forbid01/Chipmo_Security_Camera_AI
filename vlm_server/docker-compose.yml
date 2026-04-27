@@ -1,0 +1,49 @@
+# Compose file for self-hosting the VLM microservice on your own GPU
+# box. Run from the repo root:
+#
+#   VLM_API_KEY=$(openssl rand -hex 32) \
+#     docker-compose -f vlm_server/docker-compose.yml up -d
+#
+# Persist VLM_API_KEY somewhere safe — the same value goes into the
+# main app's Railway env vars so the two services authenticate to each
+# other. Rotating the key requires updating both places.
+
+version: "3.9"
+
+services:
+  vlm:
+    build:
+      context: ..                      # build context = repo root
+      dockerfile: vlm_server/Dockerfile
+    image: chipmo-vlm:latest
+    container_name: chipmo-vlm
+    restart: unless-stopped
+    ports:
+      - "8001:8001"
+    environment:
+      - VLM_API_KEY=${VLM_API_KEY:?VLM_API_KEY env var required}
+      - VLM_MODEL_NAME=${VLM_MODEL_NAME:-Qwen/Qwen2.5-VL-7B-Instruct}
+      - VLM_DEVICE=${VLM_DEVICE:-cuda}
+      - VLM_DTYPE=${VLM_DTYPE:-bfloat16}
+      - VLM_MAX_NEW_TOKENS=${VLM_MAX_NEW_TOKENS:-256}
+    # Persistent HF cache across container restarts — without this,
+    # every restart re-downloads ~14GB.
+    volumes:
+      - hf_cache:/root/.cache/huggingface
+    # GPU passthrough. Requires nvidia-container-toolkit on the host.
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 600s
+
+volumes:
+  hf_cache:

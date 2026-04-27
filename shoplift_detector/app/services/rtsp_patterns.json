@@ -1,0 +1,132 @@
+{
+  "$schema": "rtsp_patterns.schema",
+  "version": 1,
+  "notes": [
+    "Per-manufacturer RTSP URL templates + default credential hints.",
+    "Placeholders: {user}, {password}, {ip}, {port}, {channel}, {stream}.",
+    "`stream`: 0 = main (high-res), 1 = sub (low-res) — same on most devices.",
+    "`score` is used by the matcher to rank candidates (higher = tried first).",
+    "Credential hints are what vendors ship in factory default; always override."
+  ],
+  "manufacturers": [
+    {
+      "id": "hikvision",
+      "display_name": "Hikvision",
+      "oui_prefixes": ["4C:BD:8F", "28:57:BE", "BC:AD:28", "C0:51:7E", "C4:2F:90"],
+      "default_port": 554,
+      "credential_hints": [
+        { "username": "admin", "password": "12345", "note": "Old factory default before 2016." },
+        { "username": "admin", "password": "admin",  "note": "Some OEM rebrands." }
+      ],
+      "patterns": [
+        {
+          "template": "rtsp://{user}:{password}@{ip}:{port}/Streaming/Channels/{channel}0{stream_digit}",
+          "score": 100,
+          "variables": { "channel": "1", "stream_digit": "1" },
+          "description": "Modern H.264/H.265 ISAPI path (firmware 5.x+)."
+        },
+        {
+          "template": "rtsp://{user}:{password}@{ip}:{port}/h264/ch{channel}/main/av_stream",
+          "score": 60,
+          "variables": { "channel": "1" },
+          "description": "Legacy firmware path (pre-5.x)."
+        }
+      ]
+    },
+    {
+      "id": "dahua",
+      "display_name": "Dahua",
+      "oui_prefixes": ["3C:EF:8C", "90:02:A9", "4C:11:BF", "A0:BD:1D"],
+      "default_port": 554,
+      "credential_hints": [
+        { "username": "admin", "password": "admin", "note": "Factory default; web UI forces change on first login." }
+      ],
+      "patterns": [
+        {
+          "template": "rtsp://{user}:{password}@{ip}:{port}/cam/realmonitor?channel={channel}&subtype={stream}",
+          "score": 100,
+          "variables": { "channel": "1", "stream": "0" },
+          "description": "Standard Dahua RTSP path (subtype=0 main, 1 sub)."
+        }
+      ]
+    },
+    {
+      "id": "axis",
+      "display_name": "Axis Communications",
+      "oui_prefixes": ["00:40:8C", "AC:CC:8E", "B8:A4:4F"],
+      "default_port": 554,
+      "credential_hints": [
+        { "username": "root",  "password": "pass",  "note": "Very old firmware default." },
+        { "username": "admin", "password": "",       "note": "Modern Axis ships unprovisioned — you set the password on first web login." }
+      ],
+      "patterns": [
+        {
+          "template": "rtsp://{user}:{password}@{ip}:{port}/axis-media/media.amp?streamprofile=main",
+          "score": 100,
+          "description": "Axis VAPIX RTSP with named profile."
+        },
+        {
+          "template": "rtsp://{user}:{password}@{ip}:{port}/axis-media/media.amp",
+          "score": 80,
+          "description": "Axis default profile (matches camera's configured stream)."
+        }
+      ]
+    },
+    {
+      "id": "uniview",
+      "display_name": "Uniview (UNV)",
+      "oui_prefixes": ["E0:B6:F5", "4C:72:B9"],
+      "default_port": 554,
+      "credential_hints": [
+        { "username": "admin", "password": "123456", "note": "Uniview factory default." }
+      ],
+      "patterns": [
+        {
+          "template": "rtsp://{user}:{password}@{ip}:{port}/media/video{stream_digit}",
+          "score": 100,
+          "variables": { "stream_digit": "1" },
+          "description": "Uniview main/sub stream (1=main, 2=sub)."
+        }
+      ]
+    },
+    {
+      "id": "tplink",
+      "display_name": "TP-Link / Tapo / VIGI",
+      "oui_prefixes": ["98:DA:C4", "B0:BE:76", "50:C7:BF"],
+      "default_port": 554,
+      "credential_hints": [
+        { "username": "admin", "password": "",       "note": "VIGI line — admin with the password you set during phone-app pairing." }
+      ],
+      "patterns": [
+        {
+          "template": "rtsp://{user}:{password}@{ip}:{port}/stream{stream_digit}",
+          "score": 100,
+          "variables": { "stream_digit": "1" },
+          "description": "Tapo/VIGI default stream path."
+        }
+      ]
+    },
+    {
+      "id": "generic",
+      "display_name": "Generic / Unknown ONVIF",
+      "oui_prefixes": [],
+      "default_port": 554,
+      "credential_hints": [
+        { "username": "admin", "password": "admin", "note": "Universal first guess." },
+        { "username": "admin", "password": "",       "note": "Empty-password cameras still exist in the wild." }
+      ],
+      "patterns": [
+        {
+          "template": "rtsp://{user}:{password}@{ip}:{port}/onvif/profile1",
+          "score": 50,
+          "description": "ONVIF Profile S common transport URI."
+        },
+        {
+          "template": "rtsp://{user}:{password}@{ip}:{port}/live",
+          "score": 40,
+          "description": "Common third-party default."
+        }
+      ]
+    }
+  ]
+}

@@ -66,6 +66,7 @@ export default function SignupPage() {
       });
       navigate('/verify');
     } catch (err) {
+      console.warn('signup_network_error', err);
       setError('Сүлжээний алдаа. Холболтоо шалгана уу.');
     } finally {
       setSubmitting(false);

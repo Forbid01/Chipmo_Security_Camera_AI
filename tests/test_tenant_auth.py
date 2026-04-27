@@ -152,3 +152,72 @@ async def test_non_active_tenant_rejected_with_generic_401(status_value):
     # state to a caller that may have a stolen key.
     assert ctx.value.status_code == 401
     assert ctx.value.detail == "Invalid API key"
+
+
+# ---------------------------------------------------------------------------
+# T7-01 — org_id → tenant_id resolver
+# ---------------------------------------------------------------------------
+
+class _FakeScalarResult:
+    def __init__(self, value):
+        self._value = value
+
+    def scalar_one_or_none(self):
+        return self._value
+
+
+class _FakeScalarDB:
+    """Async DB double for `scalar_one_or_none()` queries."""
+
+    def __init__(self, value):
+        self._value = value
+        self.query_text: str | None = None
+        self.query_params: dict | None = None
+
+    async def execute(self, query, params=None):
+        self.query_text = str(query)
+        self.query_params = params
+        return _FakeScalarResult(self._value)
+
+
+@pytest.mark.asyncio
+async def test_get_tenant_id_for_organization_returns_str_when_mapped():
+    """When the map row exists, we return the UUID as a canonical string
+    so JWT encoding (JSON) can accept it without uuid→str conversion
+    at every call site."""
+    from shoplift_detector.app.db.repository.tenants import TenantRepository
+
+    import uuid
+    tenant_uuid = uuid.UUID("11111111-2222-3333-4444-555555555555")
+    db = _FakeScalarDB(value=tenant_uuid)
+
+    repo = TenantRepository(db)
+    result = await repo.get_tenant_id_for_organization(42)
+
+    assert result == str(tenant_uuid)
+    assert db.query_params == {"organization_id": 42}
+    assert "organization_tenant_map" in db.query_text
+
+
+@pytest.mark.asyncio
+async def test_get_tenant_id_for_organization_returns_none_when_unmapped():
+    """Pre-migration orgs have no map row — resolver returns None so
+    login continues to work, just without tenant_id in the JWT."""
+    from shoplift_detector.app.db.repository.tenants import TenantRepository
+
+    db = _FakeScalarDB(value=None)
+    repo = TenantRepository(db)
+
+    assert await repo.get_tenant_id_for_organization(999) is None
+
+
+@pytest.mark.asyncio
+async def test_get_tenant_id_for_organization_short_circuits_on_none():
+    """`None` org_id (unclaimed user) skips the DB round-trip entirely."""
+    from shoplift_detector.app.db.repository.tenants import TenantRepository
+
+    db = _FakeScalarDB(value=None)
+    repo = TenantRepository(db)
+
+    assert await repo.get_tenant_id_for_organization(None) is None
+    assert db.query_text is None, "expected no DB call for null org_id"

@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+#
+# preinstall — runs before the pkg payload is written.
+#   * Confirms we're on a supported macOS version (handled by the
+#     distribution.xml min-os check, but re-checked here for defense).
+#   * Stops the existing LaunchDaemon if the pkg is a re-install;
+#     keeps the old container from holding file locks on binaries we
+#     are about to overwrite.
+
+set -Eeuo pipefail
+
+LOG=/var/log/sentry-agent-preinstall.log
+mkdir -p /var/log
+exec >>"$LOG" 2>&1
+echo "[preinstall] $(date) starting"
+
+if [ "$(sw_vers -productVersion | cut -d. -f1)" -lt 12 ]; then
+    echo "[preinstall] macOS 12 or newer required." >&2
+    exit 1
+fi
+
+# Stop any previous LaunchDaemon — ignore errors if first install.
+launchctl bootout system/mn.sentry.agent 2>/dev/null || true
+
+docker rm -f sentry-agent 2>/dev/null || true
+
+exit 0

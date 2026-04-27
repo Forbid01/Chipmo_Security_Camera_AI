@@ -45,6 +45,15 @@ class RateLimits:
     AUTH_PASSWORD_RESET = "5/minute"    # per IP
     DASHBOARD_READ = "1000/minute"      # per user
     DASHBOARD_WRITE = "200/minute"      # per user
+    # Installer config rotates the tenant API key on every call, so
+    # repeated hits burn through the 24h overlap window. 5/min is a
+    # generous ceiling for legit ops (reinstalling a handful of agents)
+    # while starving any token-spam attempt.
+    INSTALLER_ISSUE = "5/minute"        # per user/tenant
+    # The /download/{token} and /config/{token} endpoints are unauth
+    # and only validate a signed payload — cap brute-force probing
+    # without blocking a legitimate installer retry.
+    INSTALLER_REDEEM = "60/minute"      # per IP
 
 
 RATE_LIMIT_CATEGORIES: tuple[str, ...] = (
@@ -54,6 +63,8 @@ RATE_LIMIT_CATEGORIES: tuple[str, ...] = (
     RateLimits.AUTH_PASSWORD_RESET,
     RateLimits.DASHBOARD_READ,
     RateLimits.DASHBOARD_WRITE,
+    RateLimits.INSTALLER_ISSUE,
+    RateLimits.INSTALLER_REDEEM,
 )
 
 

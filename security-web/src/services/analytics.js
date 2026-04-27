@@ -35,11 +35,9 @@ function loadSnippet() {
     return loadPromise;
   }
   loadPromise = new Promise((resolve) => {
-    // Stripped posthog-js snippet — enough to queue events while
-    // the full bundle loads. The bundle replaces window.posthog
+    // Stripped posthog-js snippet. The bundle replaces window.posthog
     // with the real SDK on load.
-    (function (p, o, s, t, h, g) {
-      // eslint-disable-next-line no-param-reassign
+    (function (p, o) {
       p.posthog = p.posthog || [];
       const q = p.posthog;
       if (q.__loaded) {
@@ -77,13 +75,11 @@ export async function trackEvent(name, properties = {}) {
       posthog.capture(name, properties);
     } else if (import.meta.env?.DEV) {
       // Dev-mode breadcrumb so engineers see what would have fired.
-      // eslint-disable-next-line no-console
       console.debug('[analytics]', name, properties);
     }
   } catch (err) {
     // Swallow — analytics must never throw into the product code.
     if (import.meta.env?.DEV) {
-      // eslint-disable-next-line no-console
       console.warn('[analytics]', err);
     }
   }
@@ -97,7 +93,6 @@ export async function identifyUser(distinctId, properties = {}) {
     }
   } catch (err) {
     if (import.meta.env?.DEV) {
-      // eslint-disable-next-line no-console
       console.warn('[analytics]', err);
     }
   }

@@ -1,0 +1,21 @@
+{
+  "settings_version": "0.0.6",
+  "datasets_dir": "D:\\ai camera\\Chipmo_Security_Camera_AI\\datasets",
+  "weights_dir": "weights",
+  "runs_dir": "runs",
+  "uuid": "d31d560bba18e4a3df7cf55bde1c25a94c8407fd187fc47160e50a7e5e21787e",
+  "sync": true,
+  "api_key": "",
+  "openai_api_key": "",
+  "clearml": true,
+  "comet": true,
+  "dvc": true,
+  "hub": true,
+  "mlflow": true,
+  "neptune": true,
+  "raytune": true,
+  "tensorboard": false,
+  "wandb": false,
+  "vscode_msg": true,
+  "openvino_msg": true
+}

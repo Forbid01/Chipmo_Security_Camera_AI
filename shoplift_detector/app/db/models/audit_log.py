@@ -33,6 +33,7 @@ AUDIT_ACTIONS = {
     "user_deleted": "user_deleted",
     "store_settings_change": "store_settings_change",
     "sync_pack_apply": "sync_pack_apply",
+    "installer_download_issued": "installer_download_issued",
 }
 
 

@@ -54,6 +54,7 @@ from app.core.security import (  # noqa: E402
 )
 from app.db.models import Base  # noqa: E402
 from app.db.repository.alerts import AlertRepository  # noqa: E402
+from app.db.repository.tenants import TenantRepository  # noqa: E402
 from app.db.repository.users import UserRepository  # noqa: E402
 from app.db.session import AsyncSessionLocal, engine  # noqa: E402
 from app.schemas.auth import (  # noqa: E402
@@ -106,6 +107,11 @@ async def lifespan(app: FastAPI):
         await conn.run_sync(Base.metadata.create_all)
     logger.info("database_tables_created")
 
+    # Pin the lifespan loop on the camera manager before any camera thread
+    # starts — the first health heartbeat is forced on thread startup and
+    # needs a loop to submit to.
+    camera_manager.attach_event_loop(asyncio.get_running_loop())
+
     await _load_cameras_from_db()
 
     from app.services.telegram_notifier import telegram_notifier
@@ -142,6 +148,9 @@ async def lifespan(app: FastAPI):
         await auto_learner_task
     with suppress(asyncio.CancelledError, Exception):
         await clip_retention_task
+    # Detach the loop so any straggler capture-thread submissions during
+    # join skip submitting to a loop that's about to close.
+    camera_manager.detach_event_loop()
     # Release VideoCapture handles and destroy any OpenCV windows so Railway
     # doesn't leave ghost ffmpeg workers around between redeploys.
     camera_manager.shutdown_all()
@@ -166,6 +175,7 @@ async def _load_cameras_from_db():
                     is_ai_enabled=cam.get("is_ai_enabled", True),
                     alert_threshold=cam.get("alert_threshold", 80.0),
                     alert_cooldown=cam.get("alert_cooldown", 15),
+                    shelf_zones=cam.get("shelf_zones") or [],
                 )
 
             logger.info("cameras_loaded", count=len(cameras))
@@ -220,11 +230,18 @@ async def _load_cameras_from_db():
 
 async def _auto_learning_task():
     """Feedback-ээс суралцах background task (main event loop дотор)."""
+    from app.core.tenancy_context import system_bypass
+
     while True:
         try:
             await asyncio.sleep(300)
             if settings.AI_AUTO_LEARN:
-                await _run_auto_learning()
+                # Background system task — needs RLS bypass so queries
+                # span every tenant's feedback rows. Wrapping at the
+                # call site (not the sleep loop) keeps the bypass
+                # window tight.
+                with system_bypass():
+                    await _run_auto_learning()
         except asyncio.CancelledError:
             raise
         except Exception as e:
@@ -241,10 +258,15 @@ async def _run_auto_learning():
 
 
 async def _clip_retention_task():
+    from app.core.tenancy_context import system_bypass
+
     while True:
         try:
             if settings.MEDIA_RETENTION_ENABLED:
-                await _run_clip_retention_cleanup()
+                # Scans alerts across every tenant to expire clips per
+                # the retention policy — must bypass RLS.
+                with system_bypass():
+                    await _run_clip_retention_cleanup()
             await asyncio.sleep(settings.MEDIA_RETENTION_INTERVAL_SECONDS)
         except asyncio.CancelledError:
             raise
@@ -354,15 +376,20 @@ async def legacy_login(request: Request, response: Response, form_data: LoginFor
     async with AsyncSessionLocal() as db:
         repo = UserRepository(db)
         user = await repo.get_by_identifier(form_data.username)
+        if not user or not verify_password(form_data.password, user["hashed_password"]):
+            raise HTTPException(status_code=401, detail="Нэвтрэх нэр эсвэл нууц үг буруу")
 
-    if not user or not verify_password(form_data.password, user["hashed_password"]):
-        raise HTTPException(status_code=401, detail="Нэвтрэх нэр эсвэл нууц үг буруу")
+        tenant_repo = TenantRepository(db)
+        tenant_id = await tenant_repo.get_tenant_id_for_organization(
+            user.get("organization_id")
+        )
 
     token = create_access_token(data={
         "sub": user["username"],
         "role": user.get("role", "user"),
         "org_id": user.get("organization_id"),
         "user_id": user.get("id"),
+        "tenant_id": tenant_id,
     })
     set_auth_cookie(response, token)
     return {

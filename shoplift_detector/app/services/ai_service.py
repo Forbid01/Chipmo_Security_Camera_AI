@@ -28,6 +28,14 @@ BYTE_TRACK_CONFIG_PATH = Path(__file__).resolve().parents[2] / "config" / "bytet
 
 try:
     from app.core.config import ALERTS_DIR
+    from app.core.geometry import denormalize_polygon, point_in_polygon
+    from app.core.severity import (
+        DEFAULT_SEVERITY_THRESHOLDS,
+        NOTIFY_SEVERITIES,
+        SeverityLevel,
+        SeverityThresholds,
+        classify_severity,
+    )
     from app.services.auto_learner import auto_learner
     from app.services.camera_manager import camera_manager
 except ImportError:
@@ -80,7 +88,12 @@ class ShopliftDetector:
             with contextlib.suppress(Exception):
                 torch.set_num_interop_threads(2)
 
-        self.tracker_history: dict = {}
+        # Per-camera scoping: one ShopliftDetector multiplexes N cameras onto
+        # one YOLO model + one ByteTrack state. Without keying by camera, track
+        # IDs collide across cameras and scores leak between unrelated people.
+        self.tracker_history: dict = {}  # key: (camera_id, int(yolo_id))
+        self._camera_trackers: dict = {}  # key: camera_id -> saved ByteTrack state
+        self._active_tracker_camera = None
         self.frame_count = 0
         self._cached_expensive_items: list = []
 
@@ -90,9 +103,43 @@ class ShopliftDetector:
         return config.get("weights", DEFAULT_WEIGHTS)
 
     def _get_threshold(self, store_id: int, default: float = 80.0) -> float:
-        """Дэлгүүрт тохирсон threshold авах (auto-learned)."""
+        """Дэлгүүрт тохирсон threshold авах (auto-learned).
+
+        Kept for backward compatibility with callers that still want a
+        single scalar (e.g. UI display). The 4-level classifier in
+        `_get_severity_thresholds` is the primary signal now.
+        """
         config = auto_learner.get_store_config(store_id)
         return config.get("threshold", default)
+
+    def _get_severity_thresholds(self, store_id: int) -> SeverityThresholds:
+        """Resolve the per-store 4-level classifier breakpoints.
+
+        Lookup order:
+        1. `auto_learner.get_store_config(store_id)["severity_thresholds"]`
+           — a future learner can tune these per store.
+        2. Module defaults (40 / 70 / 85 from the T5 spec).
+
+        Never touches the DB from the inference loop; if no cached
+        config exists we fall through to defaults rather than block.
+        """
+        config = auto_learner.get_store_config(store_id)
+        raw = config.get("severity_thresholds")
+        if isinstance(raw, SeverityThresholds):
+            return raw
+        if isinstance(raw, dict):
+            try:
+                return SeverityThresholds(
+                    yellow=float(raw["yellow"]),
+                    orange=float(raw["orange"]),
+                    red=float(raw["red"]),
+                )
+            except (KeyError, TypeError, ValueError):
+                logger.warning(
+                    "severity_thresholds_invalid_for_store",
+                    extra={"store_id": store_id},
+                )
+        return DEFAULT_SEVERITY_THRESHOLDS
 
     @staticmethod
     def _get_tracker_config_path() -> str:
@@ -116,7 +163,8 @@ class ShopliftDetector:
 
     def _async_save_alert(self, yolo_id, frame_to_save, name: str, reason: str,
                           bbox: list, camera_id: int = None, store_id: int = None,
-                          score: float = None, cooldown_seconds: int = 60):
+                          score: float = None, cooldown_seconds: int = 60,
+                          severity: SeverityLevel = "yellow"):
         import asyncio
 
         try:
@@ -133,6 +181,7 @@ class ShopliftDetector:
                         store_id=store_id,
                         score=score,
                         cooldown_seconds=cooldown_seconds,
+                        severity=severity,
                     )
                 )
             finally:
@@ -141,14 +190,20 @@ class ShopliftDetector:
             logger.error(f"Alert save error: {e}")
 
     async def _dispatch_alert(self, *, yolo_id, frame_to_save, name, reason,
-                              bbox, camera_id, store_id, score, cooldown_seconds):
+                              bbox, camera_id, store_id, score, cooldown_seconds,
+                              severity: SeverityLevel = "yellow"):
         """Single-session orchestration: dedup → persist → record → notify.
 
         Routes every step through AlertManager so that Telegram is only
         notified after the alert is both approved by dedup and persisted.
+        Always called from the AI inference thread (never from a
+        request handler) — runs under `system_bypass` so the alert
+        insert, dedup lookup, and store fetch succeed regardless of
+        whether RLS is enforced.
         """
         from datetime import UTC, datetime, timedelta
 
+        from app.core.tenancy_context import system_bypass
         from app.db.session import AsyncSessionLocal
         from app.services.alert_manager import alert_manager
         from app.services.storage import get_storage
@@ -156,121 +211,253 @@ class ShopliftDetector:
         person_track_id = int(yolo_id)
         cooldown = max(0, int(cooldown_seconds or 0))
 
-        async with AsyncSessionLocal() as db:
-            decision = await alert_manager.should_send_alert(
-                db,
-                camera_id=camera_id,
-                person_track_id=person_track_id,
-                cooldown_seconds=cooldown,
-            )
-            if not decision.should_alert:
+        with system_bypass():
+            async with AsyncSessionLocal() as db:
+                decision = await alert_manager.should_send_alert(
+                    db,
+                    camera_id=camera_id,
+                    person_track_id=person_track_id,
+                    cooldown_seconds=cooldown,
+                )
+                if not decision.should_alert:
+                    logger.info(
+                        "Alert suppressed for camera_id=%s person_track_id=%s: %s",
+                        camera_id,
+                        person_track_id,
+                        decision.reason,
+                    )
+                    return
+
+                filename = f"alert_{yolo_id}_{int(time.time())}.jpg"
+                try:
+                    image_url = get_storage().save_image(frame_to_save, filename=filename)
+                except Exception as exc:
+                    logger.error(f"Storage upload failed: {exc} — falling back to local")
+                    fallback = os.path.join(ALERTS_DIR, filename)
+                    cv2.imwrite(fallback, frame_to_save)
+                    image_url = fallback
+
+                # --- RAG + VLM verification ---------------------------------
+                # Runs *after* the cooldown gate so we don't waste GPU
+                # cycles on duplicates, and *before* the alert insert so
+                # the verdict columns are populated atomically with the
+                # row. Failures inside the pipeline downgrade to
+                # "not_run" — see rag_vlm_pipeline.evaluate.
+                from app.db.repository.stores import StoreRepository
+                from app.schemas.store_settings import resolve_settings
+                from app.services import rag_vlm_pipeline
+
+                store_settings = None
+                if store_id is not None:
+                    store_row = await StoreRepository(db).get_by_id(store_id)
+                    if store_row:
+                        store_settings = resolve_settings(store_row.get("settings"))
+
+                pipeline_decision = await rag_vlm_pipeline.evaluate(
+                    description=reason,
+                    frame=frame_to_save,
+                    store_id=store_id,
+                    store_settings=store_settings,
+                    db=db,
+                )
+
+                from app.db.repository.alerts import AlertRepository
+
+                alert_id = await AlertRepository(db).insert_alert(
+                    person_id=person_track_id,
+                    image_path=image_url,
+                    reason=reason,
+                    camera_id=camera_id,
+                    store_id=store_id,
+                    confidence_score=score,
+                    severity=severity,
+                    person_track_id=person_track_id,
+                    rag_decision=pipeline_decision.rag_decision,
+                    vlm_decision=pipeline_decision.vlm_decision,
+                    suppressed=pipeline_decision.suppressed,
+                    suppressed_reason=pipeline_decision.suppressed_reason,
+                )
+                if alert_id is None:
+                    logger.warning(
+                        "Alert insert returned None after dedup approved; "
+                        "camera_id=%s person_track_id=%s",
+                        camera_id,
+                        person_track_id,
+                    )
+                    return
+
+                now = datetime.now(UTC)
+                await alert_manager.record_alert_committed(
+                    db,
+                    camera_id=camera_id,
+                    person_track_id=person_track_id,
+                    alert_id=alert_id,
+                    now=now,
+                    cooldown_until=now + timedelta(seconds=cooldown),
+                )
+
+                # Persist the VLM caption (if any) so the frontend can
+                # render it next to the alert. Done inside the same DB
+                # session so we don't open a second connection just to
+                # write one row.
+                if pipeline_decision.vlm_verdict is not None:
+                    try:
+                        await rag_vlm_pipeline.persist_vlm_annotation(
+                            db=db,
+                            alert_id=alert_id,
+                            verdict=pipeline_decision.vlm_verdict,
+                        )
+                    except Exception:
+                        logger.exception(
+                            "Failed to persist VLM annotation for alert_id=%s",
+                            alert_id,
+                        )
+
+            # Suppressed alerts stay in the DB (so dashboards can chart
+            # suppression rate) but never fire downstream notifications.
+            if pipeline_decision.suppressed:
                 logger.info(
-                    "Alert suppressed for camera_id=%s person_track_id=%s: %s",
-                    camera_id,
-                    person_track_id,
-                    decision.reason,
+                    "Alert %s suppressed by %s: %s",
+                    alert_id,
+                    pipeline_decision.rag_decision
+                    if pipeline_decision.rag_decision == "suppressed_by_rag"
+                    else pipeline_decision.vlm_decision,
+                    pipeline_decision.suppressed_reason,
                 )
                 return
 
-            filename = f"alert_{yolo_id}_{int(time.time())}.jpg"
             try:
-                image_url = get_storage().save_image(frame_to_save, filename=filename)
-            except Exception as exc:
-                logger.error(f"Storage upload failed: {exc} — falling back to local")
-                fallback = os.path.join(ALERTS_DIR, filename)
-                cv2.imwrite(fallback, frame_to_save)
-                image_url = fallback
-
-            from app.db.repository.alerts import AlertRepository
-
-            alert_id = await AlertRepository(db).insert_alert(
-                person_id=person_track_id,
-                image_path=image_url,
-                reason=reason,
-                camera_id=camera_id,
-                store_id=store_id,
-                confidence_score=score,
-            )
-            if alert_id is None:
-                logger.warning(
-                    "Alert insert returned None after dedup approved; "
-                    "camera_id=%s person_track_id=%s",
-                    camera_id,
-                    person_track_id,
+                # T5-06/07/08/09 — fan out across every configured
+                # channel + log each delivery to `alert_escalations`.
+                # The dispatcher swallows per-channel failures so we
+                # wrap broadly only to catch import/bootstrap issues.
+                from app.services.escalation_dispatcher import (
+                    AlertContext,
+                    dispatch_alert,
                 )
-                return
 
-            now = datetime.now(UTC)
-            await alert_manager.record_alert_committed(
-                db,
-                camera_id=camera_id,
-                person_track_id=person_track_id,
-                alert_id=alert_id,
-                now=now,
-                cooldown_until=now + timedelta(seconds=cooldown),
-            )
+                await dispatch_alert(
+                    AlertContext(
+                        alert_id=alert_id,
+                        store_id=store_id,
+                        camera_id=camera_id,
+                        severity=severity,
+                        reason=reason,
+                        image_path=image_url,
+                        score=score,
+                    )
+                )
+            except Exception as tg_err:
+                logger.error(f"Alert escalation error: {tg_err}")
 
-        try:
-            await self._send_telegram_alert(
-                store_id=store_id, camera_id=camera_id,
-                reason=reason, image_path=image_url, score=score,
-            )
-        except Exception as tg_err:
-            logger.error(f"Telegram notification error: {tg_err}")
+            from app.core.state import alert_queue
+            alert_queue.put({
+                "id": yolo_id,
+                "img": image_url, "reason": reason, "name": name,
+                "frame": frame_to_save, "bbox": bbox,
+                "camera_id": camera_id, "store_id": store_id,
+            })
 
-        from app.core.state import alert_queue
-        alert_queue.put({
-            "id": yolo_id,
-            "img": image_url, "reason": reason, "name": name,
-            "frame": frame_to_save, "bbox": bbox,
-            "camera_id": camera_id, "store_id": store_id,
-        })
+    async def _send_telegram_alert(self, store_id, camera_id, reason, image_path, score,
+                                   severity: SeverityLevel = "yellow",
+                                   alert_id: int | None = None):
+        """Дэлгүүрийн Telegram subscribers руу мэдэгдэл илгээх.
 
-    async def _send_telegram_alert(self, store_id, camera_id, reason, image_path, score):
-        """Дэлгүүрийн telegram_chat_id руу мэдэгдэл илгээх."""
+        T5-04 fan-out: if `store_telegram_subscribers` rows exist for the
+        store, every subscriber gets the alert. Falls back to the legacy
+        `stores.telegram_chat_id` singleton when no subscriber rows exist
+        so existing deployments keep working without a migration.
+        """
         from app.services.telegram_notifier import telegram_notifier
         if not telegram_notifier.is_configured:
             return
 
         from app.db.repository.stores import StoreRepository
+        from app.db.repository.telegram_subscribers import (
+            TelegramSubscriberRepository,
+        )
         from app.db.session import AsyncSessionLocal
 
         async with AsyncSessionLocal() as db:
             store_repo = StoreRepository(db)
             store = await store_repo.get_by_id(store_id) if store_id else None
+            if not store:
+                return
+            subscriber_rows = (
+                await TelegramSubscriberRepository(db).list_for_store(store_id)
+                if store_id else []
+            )
 
-        if not store or not store.get("telegram_chat_id"):
+        chat_ids: list[str] = [row["chat_id"] for row in subscriber_rows]
+        if not chat_ids and store.get("telegram_chat_id"):
+            chat_ids = [store["telegram_chat_id"]]
+        if not chat_ids:
             return
 
-        # Камерын нэр авах
         camera_name = f"Camera #{camera_id}" if camera_id else "Unknown"
         cam_state = camera_manager._cameras.get(camera_id)
         if cam_state:
             camera_name = cam_state.name
 
-        await telegram_notifier.send_alert(
-            chat_id=store["telegram_chat_id"],
-            store_name=store["name"],
-            camera_name=camera_name,
-            reason=reason,
-            image_path=image_path,
-            score=score,
-        )
+        for chat_id in chat_ids:
+            try:
+                await telegram_notifier.send_alert(
+                    chat_id=chat_id,
+                    store_name=store["name"],
+                    camera_name=camera_name,
+                    reason=reason,
+                    image_path=image_path,
+                    score=score,
+                    severity=severity,
+                    alert_id=alert_id,
+                )
+            except Exception as per_chat_err:
+                # One bad chat_id (user blocked the bot, invalid id, etc.)
+                # must not prevent the rest of the fan-out.
+                logger.error(
+                    "telegram_alert_send_failed",
+                    extra={"chat_id": chat_id, "error": str(per_chat_err)},
+                )
 
     @staticmethod
     def _keypoint_valid(kp) -> bool:
         return kp[0] > 1.0 and kp[1] > 1.0
 
     def _cleanup_stale_tracks(self):
-        stale_ids = [
-            tid for tid, data in self.tracker_history.items()
+        stale_keys = [
+            key for key, data in self.tracker_history.items()
             if self.frame_count - data["last_seen"] > STALE_TRACK_FRAMES
         ]
-        for tid in stale_ids:
-            del self.tracker_history[tid]
+        for key in stale_keys:
+            del self.tracker_history[key]
+
+    def _swap_to_camera_tracker(self, camera_id):
+        """Swap Ultralytics' ByteTrack state to the current camera's state.
+
+        Without this, frames from different cameras hit the same predictor and
+        ByteTrack matches bboxes across cameras as if they were one stream,
+        corrupting track identity even when dict keys are camera-scoped.
+        """
+        if camera_id is None or self._active_tracker_camera == camera_id:
+            return
+
+        predictor = getattr(self.pose_model, "predictor", None)
+        if predictor is not None:
+            if self._active_tracker_camera is not None:
+                current = getattr(predictor, "trackers", None)
+                if current is not None:
+                    self._camera_trackers[self._active_tracker_camera] = current
+
+            if camera_id in self._camera_trackers:
+                predictor.trackers = self._camera_trackers[camera_id]
+            elif hasattr(predictor, "trackers"):
+                delattr(predictor, "trackers")
+
+        self._active_tracker_camera = camera_id
 
     def _analyze_behavior(self, curr: dict, kps, person_h: float,
-                          expensive_items: list, weights: dict):
+                          expensive_items: list, weights: dict,
+                          shelf_zones_px: list | None = None):
         score_delta = 0.0
         reasons = []
 
@@ -305,18 +492,35 @@ class ShopliftDetector:
                 score_delta += weights.get("looking_around", 1.5)
                 reasons.append("Орчноо харах")
 
-        # 2. Item pickup
+        # 2. Item pickup / shelf interaction
+        # Shelf ROI zones are the primary signal because they work for any
+        # retail category (grocery, apparel, cosmetics) — COCO's 80-class
+        # model only catches bottle/cell phone/handbag/laptop. Zones win
+        # when configured; COCO is the zero-config fallback.
         for wrist in [l_wrist, r_wrist]:
             if not self._keypoint_valid(wrist):
                 continue
-            if not curr["holding"]:
+            if curr["holding"]:
+                continue
+
+            matched_label = None
+            if shelf_zones_px:
+                for zone in shelf_zones_px:
+                    if point_in_polygon(wrist, zone["polygon"]):
+                        matched_label = zone["name"]
+                        break
+            else:
                 for item in expensive_items:
                     ix1, iy1, ix2, iy2 = item["box"]
                     if ix1 < wrist[0] < ix2 and iy1 < wrist[1] < iy2:
-                        curr["holding"] = item["label"]
-                        score_delta += weights.get("item_pickup", 15.0)
-                        reasons.append(f"{item['label']} авах")
+                        matched_label = item["label"]
                         break
+
+            if matched_label:
+                curr["holding"] = matched_label
+                score_delta += weights.get("item_pickup", 15.0)
+                reasons.append(f"{matched_label} авах")
+                break
 
         # 3. Body block
         if self._keypoint_valid(l_shoulder) and self._keypoint_valid(r_shoulder):
@@ -381,6 +585,7 @@ class ShopliftDetector:
                 store_id = data.get("store_id", 0)
                 threshold = data.get("threshold", 80.0)
                 cooldown = data.get("cooldown", 60)
+                shelf_zones = data.get("shelf_zones") or []
             except (queue.Empty, TypeError, KeyError):
                 continue
 
@@ -392,12 +597,16 @@ class ShopliftDetector:
             scale_x = dw / sw if sw else 1.0
             scale_y = dh / sh if sh else 1.0
 
-            # Get per-store weights and threshold (auto-learned)
+            # Get per-store weights + severity thresholds (auto-learned).
+            # `threshold` from the queue is kept for legacy display paths
+            # but the 4-level classifier below decides when to alert.
             weights = self._get_weights(store_id)
-            effective_threshold = self._get_threshold(store_id, threshold)
+            severity_thresholds = self._get_severity_thresholds(store_id)
 
             if self.frame_count % 50 == 0:
                 self._cleanup_stale_tracks()
+
+            self._swap_to_camera_tracker(camera_id)
 
             # inference_mode() disables autograd bookkeeping → lower memory
             # footprint and ~5-10% faster than no_grad on CPU.
@@ -424,6 +633,20 @@ class ShopliftDetector:
 
             expensive_items = self._cached_expensive_items
 
+            # Precompute pixel-space shelf polygons once per frame — wrist
+            # keypoints live in `frame` coords, not `full_frame`, because
+            # pose_model ran against the resized frame.
+            shelf_zones_px: list[dict] = []
+            if shelf_zones:
+                for z in shelf_zones:
+                    poly = z.get("polygon") or []
+                    if len(poly) < 3:
+                        continue
+                    shelf_zones_px.append({
+                        "name": z.get("name") or "shelf",
+                        "polygon": denormalize_polygon(poly, sw, sh),
+                    })
+
             if pose_results[0].boxes.id is not None:
                 yolo_ids  = pose_results[0].boxes.id.int().cpu().numpy()
                 keypoints = pose_results[0].keypoints.xy.cpu().numpy()
@@ -437,8 +660,9 @@ class ShopliftDetector:
                     x2 = int(bx2 * scale_x)
                     y2 = int(by2 * scale_y)
 
-                    if yolo_id not in self.tracker_history:
-                        self.tracker_history[yolo_id] = {
+                    track_key = (camera_id, int(yolo_id))
+                    if track_key not in self.tracker_history:
+                        self.tracker_history[track_key] = {
                             "holding": None,
                             "score": 0.0,
                             "last_seen": self.frame_count,
@@ -449,7 +673,7 @@ class ShopliftDetector:
                             "last_reasons": [],
                         }
 
-                    curr = self.tracker_history[yolo_id]
+                    curr = self.tracker_history[track_key]
                     curr["last_seen"] = self.frame_count
 
                     if not curr["holding"]:
@@ -458,31 +682,40 @@ class ShopliftDetector:
                         curr["score"] = max(0.0, curr["score"] * 0.999)
 
                     delta, reasons = self._analyze_behavior(
-                        curr, keypoints[i], person_h, expensive_items, weights
+                        curr, keypoints[i], person_h, expensive_items, weights,
+                        shelf_zones_px,
                     )
                     curr["score"] += delta
                     if reasons:
                         curr["last_reasons"] = reasons
 
-                    if curr["score"] >= effective_threshold:
+                    severity = classify_severity(curr["score"], severity_thresholds)
+
+                    if severity in NOTIFY_SEVERITIES:
                         reason_str = " | ".join(curr["last_reasons"])
                         self.executor.submit(
                             self._async_save_alert,
                             yolo_id, display_frame.copy(),
                             "Unknown", f"🚨 {reason_str}", [x1, y1, x2, y2],
                             camera_id, store_id, curr["score"], cooldown,
+                            severity,
                         )
                         curr["score"] = 0.0
                         curr["holding"] = None
                         curr["concealment_frames"] = 0
                         curr["last_reasons"] = []
 
-                    if curr["score"] < 25:
-                        border_color, status_text = (0, 255, 0), "NORMAL"
-                    elif curr["score"] < 55:
-                        border_color, status_text = (0, 215, 255), "SUSPICIOUS"
-                    else:
+                    # Bounding-box color reflects the classifier tier so the
+                    # review dashboard and the raw stream agree on severity.
+                    # BGR tuples for OpenCV (not RGB).
+                    if severity == "red":
                         border_color, status_text = (0, 0, 255), "THEFT DETECTED"
+                    elif severity == "orange":
+                        border_color, status_text = (0, 128, 255), "SUSPICIOUS"
+                    elif severity == "yellow":
+                        border_color, status_text = (0, 215, 255), "WATCH"
+                    else:
+                        border_color, status_text = (0, 255, 0), "NORMAL"
 
                     cv2.rectangle(display_frame, (x1, y1), (x2, y2), border_color, 2)
                     label = (

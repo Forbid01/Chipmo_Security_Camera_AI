@@ -62,6 +62,10 @@ class CameraState:
     is_ai_enabled: bool
     alert_threshold: float = 80.0
     alert_cooldown: int = 15
+    # Shelf ROI polygons (normalized 0..1 coords) passed per-frame to the AI
+    # service so the detector can score "hand enters shelf" interactions
+    # independently of COCO object classes. Empty = fall back to legacy.
+    shelf_zones: list = field(default_factory=list)
     # Runtime state. `frame_buffer` is a 1-slot deque so an appendleft()
     # by the capture thread atomically drops the previous (stale) frame —
     # readers always see the newest frame, never a torn write.
@@ -99,10 +103,58 @@ class CameraManager:
         self.ai_input_queue: queue.Queue = queue.Queue(
             maxsize=settings.AI_QUEUE_MAXSIZE
         )
+        # Bound to the FastAPI lifespan loop so capture threads can submit
+        # async DB work without spinning up a throwaway loop per heartbeat —
+        # AsyncSessionLocal/engine are bound to one loop, and a fresh loop
+        # crashes asyncpg with "Future attached to a different loop" during
+        # connection pool teardown.
+        self._main_loop: asyncio.AbstractEventLoop | None = None
+
+    def attach_event_loop(self, loop: asyncio.AbstractEventLoop) -> None:
+        """Pin the main event loop. Call from the FastAPI lifespan before
+        registering cameras so the first health heartbeat has somewhere
+        to land."""
+        self._main_loop = loop
+
+    def detach_event_loop(self) -> None:
+        """Drop the loop reference so threads stop submitting to a loop
+        that's about to close. Call from lifespan shutdown before the
+        event loop tears down."""
+        self._main_loop = None
+
+    def _submit_async(self, coro, *, op: str, camera_name: str) -> None:
+        """Schedule a coroutine on the main event loop without blocking
+        the capture thread. Never waits on the future — DB I/O must not
+        stall frame capture — but attaches a done callback so exceptions
+        aren't silently swallowed.
+
+        If no loop is attached (pre-lifespan or post-shutdown) the
+        coroutine is closed to avoid a "coroutine was never awaited"
+        warning and the submission is skipped.
+        """
+        loop = self._main_loop
+        if loop is None or loop.is_closed():
+            coro.close()
+            return
+        try:
+            future = asyncio.run_coroutine_threadsafe(coro, loop)
+        except RuntimeError:
+            # Loop closed between the check and submit — rare race during
+            # shutdown. Close the coroutine and move on.
+            coro.close()
+            return
+
+        def _on_done(fut):
+            exc = fut.exception()
+            if exc is not None:
+                logger.warning("[%s] %s failed: %s", camera_name, op, exc)
+
+        future.add_done_callback(_on_done)
 
     def register_camera(self, camera_id: int, store_id: int, name: str,
                         url: str, camera_type: str, is_ai_enabled: bool = True,
-                        alert_threshold: float = 80.0, alert_cooldown: int = 15):
+                        alert_threshold: float = 80.0, alert_cooldown: int = 15,
+                        shelf_zones: list | None = None):
         with self._lock:
             if camera_id in self._cameras:
                 self.unregister_camera(camera_id)
@@ -111,6 +163,7 @@ class CameraManager:
                 camera_id=camera_id, store_id=store_id, name=name,
                 url=url, camera_type=camera_type, is_ai_enabled=is_ai_enabled,
                 alert_threshold=alert_threshold, alert_cooldown=alert_cooldown,
+                shelf_zones=list(shelf_zones) if shelf_zones else [],
             )
             self._cameras[camera_id] = state
             self._start_capture(state)
@@ -122,6 +175,20 @@ class CameraManager:
             if state:
                 state._stop_event.set()
                 logger.info(f"Camera unregistered: {state.name} (id={camera_id})")
+
+    def update_shelf_zones(self, camera_id: int, zones: list) -> bool:
+        """Hot-swap the shelf zones for a live camera.
+
+        The capture loop reads `state.shelf_zones` on each frame, so the
+        new polygons take effect on the next enqueued AI frame with no
+        restart.
+        """
+        with self._lock:
+            state = self._cameras.get(camera_id)
+            if state is None:
+                return False
+            state.shelf_zones = list(zones)
+            return True
 
     def _start_capture(self, state: CameraState):
         thread = threading.Thread(
@@ -186,34 +253,32 @@ class CameraManager:
         status = self._get_health_status(state)
 
         async def _write_health():
+            from app.core.tenancy_context import system_bypass
             from app.db.repository.camera_health import CameraHealthRepository
             from app.db.session import AsyncSessionLocal
 
-            async with AsyncSessionLocal() as db:
-                repo = CameraHealthRepository(db)
-                await repo.upsert_heartbeat(
-                    camera_id=state.camera_id,
-                    store_id=state.store_id,
-                    status=status,
-                    is_connected=state.is_connected,
-                    fps=state.fps,
-                    last_frame_at=state.last_frame_at,
-                    last_error=state.last_error,
-                    now=datetime.now(UTC),
-                )
+            # Background health heartbeat runs with no tenant in
+            # context; under TENANCY_RLS_ENFORCED=True it would
+            # otherwise fail closed and silently drop the upsert.
+            with system_bypass():
+                async with AsyncSessionLocal() as db:
+                    repo = CameraHealthRepository(db)
+                    await repo.upsert_heartbeat(
+                        camera_id=state.camera_id,
+                        store_id=state.store_id,
+                        status=status,
+                        is_connected=state.is_connected,
+                        fps=state.fps,
+                        last_frame_at=state.last_frame_at,
+                        last_error=state.last_error,
+                        now=datetime.now(UTC),
+                    )
 
-        try:
-            loop = asyncio.new_event_loop()
-            try:
-                loop.run_until_complete(_write_health())
-            finally:
-                loop.close()
-        except Exception as exc:
-            logger.warning(
-                "[%s] Camera health heartbeat failed: %s",
-                state.name,
-                exc,
-            )
+        self._submit_async(
+            _write_health(),
+            op="camera_health_heartbeat",
+            camera_name=state.name,
+        )
 
     def _maybe_notify_offline(self, state: CameraState):
         if self._get_health_status(state) != "offline" or state.offline_since_monotonic is None:
@@ -236,27 +301,22 @@ class CameraManager:
         )
 
         async def _mark_notification():
+            from app.core.tenancy_context import system_bypass
             from app.db.repository.camera_health import CameraHealthRepository
             from app.db.session import AsyncSessionLocal
 
-            async with AsyncSessionLocal() as db:
-                await CameraHealthRepository(db).mark_notification_sent(
-                    camera_id=state.camera_id,
-                    notified_at=datetime.now(UTC),
-                )
+            with system_bypass():
+                async with AsyncSessionLocal() as db:
+                    await CameraHealthRepository(db).mark_notification_sent(
+                        camera_id=state.camera_id,
+                        notified_at=datetime.now(UTC),
+                    )
 
-        try:
-            loop = asyncio.new_event_loop()
-            try:
-                loop.run_until_complete(_mark_notification())
-            finally:
-                loop.close()
-        except Exception as exc:
-            logger.warning(
-                "[%s] Camera offline notification marker failed: %s",
-                state.name,
-                exc,
-            )
+        self._submit_async(
+            _mark_notification(),
+            op="camera_offline_notification",
+            camera_name=state.name,
+        )
 
     def _get_health_status(self, state: CameraState) -> str:
         if state.is_connected:
@@ -357,6 +417,7 @@ class CameraManager:
                         "source": state.name,
                         "threshold": state.alert_threshold,
                         "cooldown": state.alert_cooldown,
+                        "shelf_zones": state.shelf_zones,
                     })
 
                 time.sleep(0.01)

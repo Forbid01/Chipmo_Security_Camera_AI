@@ -1,6 +1,8 @@
 import { memo, useState } from 'react';
 import { Image, PlayCircle, TriangleAlert, ThumbsUp, ThumbsDown, Loader2 } from 'lucide-react';
 import { submitAlertFeedback } from '../../services/api';
+import AlertVerdictBadges from '../Alerts/AlertVerdictBadges';
+import AlertVlmDetail from '../Alerts/AlertVlmDetail';
 
 const AlertCardInner = ({ alert, onSelect }) => {
   const [feedbackStatus, setFeedbackStatus] = useState(alert?.feedback_status || 'unreviewed');
@@ -64,6 +66,22 @@ const AlertCardInner = ({ alert, onSelect }) => {
           {badge && (
             <div className={`mt-2 inline-flex items-center rounded-full border px-2.5 py-0.5 text-[10px] font-bold ${badge.color}`}>
               {badge.text}
+            </div>
+          )}
+
+          {/* RAG / VLM verdict badges (Phase 2). Returns null on legacy
+              alerts where the pipeline never ran, so the row is invisible
+              for older data. */}
+          <div className="mt-2">
+            <AlertVerdictBadges alert={alert} />
+          </div>
+
+          {/* VLM caption — only on alerts that the VLM actually saw and
+              that weren't suppressed by RAG. Polls the backend until the
+              annotation row is ready, then degrades silently. */}
+          {alert?.vlm_decision && alert.vlm_decision !== 'not_run' && !alert.suppressed && (
+            <div className="mt-3">
+              <AlertVlmDetail alertId={alert.id} />
             </div>
           )}
 
@@ -137,7 +155,10 @@ const alertPropsEqual = (prev, next) => {
     a.feedback_status === b.feedback_status &&
     a.web_url === b.web_url &&
     a.video_url === b.video_url &&
-    a.event_time === b.event_time
+    a.event_time === b.event_time &&
+    a.rag_decision === b.rag_decision &&
+    a.vlm_decision === b.vlm_decision &&
+    a.suppressed === b.suppressed
   );
 };
 

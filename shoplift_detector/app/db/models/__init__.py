@@ -11,8 +11,10 @@ from .model_version import ModelVersion
 from .organization import Organization
 from .organization_tenant_map import OrganizationTenantMap
 from .otp_challenge import OTP_CHANNELS, OtpChallenge
+from .rag_corpus import RAG_DOC_TYPES, RagCorpusDocument
 from .store import Store
 from .sync_pack import SyncPack
+from .vlm_annotation import VlmAnnotation
 from .tenant import (
     ONBOARDING_STEPS,
     TENANT_PLANS,
@@ -43,4 +45,7 @@ __all__ = [
     "AlertStateRecord",
     "AuditLog",
     "ModelVersion",
+    "RagCorpusDocument",
+    "RAG_DOC_TYPES",
+    "VlmAnnotation",
 ]

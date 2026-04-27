@@ -36,6 +36,7 @@ def test_default_settings_has_all_required_keys():
         "vlm_confidence_threshold",
         "timezone",
         "notification_channels",
+        "severity_thresholds",
     }
     assert set(settings.model_dump().keys()) == expected
 

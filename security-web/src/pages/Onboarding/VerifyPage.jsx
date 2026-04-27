@@ -70,6 +70,7 @@ export default function VerifyPage() {
       trackEvent(ANALYTICS_EVENTS.EMAIL_VERIFIED);
       navigate('/plan');
     } catch (err) {
+      console.warn('verify_otp_network_error', err);
       setError('Сүлжээний алдаа. Дахин оролдоно уу.');
     } finally {
       setSubmitting(false);

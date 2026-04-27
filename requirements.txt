@@ -18,6 +18,17 @@ lap>=0.5.12
 onnx
 onnxruntime
 
+# --- RAG / Embeddings (Phase 1) ---
+# Vectors are stored in Postgres via pgvector — no separate vector DB.
+# Railway's managed Postgres ships with the extension preinstalled.
+sentence-transformers>=2.7.0
+pgvector>=0.3.0
+
+# --- Vision-Language Model (Phase 2 - GPU recommended) ---
+transformers>=4.45.0
+accelerate>=0.30.0
+pillow>=10.0.0
+
 # --- Database ---
 sqlalchemy[asyncio]>=2.0
 asyncpg

@@ -1,0 +1,31 @@
+[Unit]
+Description=Sentry edge agent (Docker-based RTSP bridge)
+Documentation=https://sentry.mn/docs
+Requires=docker.service
+After=docker.service network-online.target
+
+[Service]
+Type=simple
+Restart=always
+RestartSec=10
+TimeoutStartSec=300
+TimeoutStopSec=30
+
+# @SENTRY_IMAGE@ is rewritten by install.sh at deploy time so a single
+# unit file can target staging / production / custom registries.
+ExecStartPre=-/usr/bin/docker rm -f sentry-agent
+ExecStart=/usr/bin/docker run --init --rm --name sentry-agent \
+    --pull always \
+    -v /etc/sentry-agent/config.yaml:/etc/sentry-agent/config.yaml:ro \
+    @SENTRY_IMAGE@
+ExecStop=/usr/bin/docker stop sentry-agent
+
+# Hardening — docker itself runs as root, but the wrapper process
+# shouldn't need write access outside our log / state dirs.
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/var/log/sentry-agent /var/lib/sentry-agent /var/run
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target

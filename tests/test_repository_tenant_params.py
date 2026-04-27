@@ -169,6 +169,27 @@ async def test_camera_delete_with_org_id_pins_tenant():
     assert db.last_params == {"id": 5, "org_id": 100}
 
 
+@pytest.mark.asyncio
+async def test_camera_get_shelf_zones_with_org_id_pins_tenant():
+    db = _Capture()
+    repo = CameraRepository(db)
+    await repo.get_shelf_zones(5, organization_id=100)
+
+    assert "SELECT shelf_zones FROM cameras" in db.last_query
+    assert "AND organization_id = :org_id" in db.last_query
+    assert db.last_params == {"id": 5, "org_id": 100}
+
+
+@pytest.mark.asyncio
+async def test_camera_get_shelf_zones_without_org_id_is_id_only():
+    db = _Capture()
+    repo = CameraRepository(db)
+    await repo.get_shelf_zones(5)
+
+    assert db.last_query == "SELECT shelf_zones FROM cameras WHERE id = :id"
+    assert db.last_params == {"id": 5}
+
+
 # ---------------------------------------------------------------------------
 # StoreRepository
 # ---------------------------------------------------------------------------

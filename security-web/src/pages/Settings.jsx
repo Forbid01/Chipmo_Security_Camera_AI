@@ -3,10 +3,14 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, User, Building2, Mail, Shield, Send,
-  MessageCircle, Store, Check, X, Loader2, Trash2
+  MessageCircle, Store, Check, X, Loader2, Trash2, Brain
 } from 'lucide-react';
 import { motion } from 'framer-motion';
-import { getUserProfile, getMyStores, testTelegram, removeTelegram } from '../services/api';
+import {
+  getUserProfile, getMyStores, testTelegram, removeTelegram,
+  getStoreSettings, patchStoreSettings,
+} from '../services/api';
+import RagVlmSettings from '../components/Settings/RagVlmSettings';
 
 function Settings() {
   const navigate = useNavigate();
@@ -18,6 +22,33 @@ function Settings() {
   const [telegramInputs, setTelegramInputs] = useState({});
   const [testingStore, setTestingStore] = useState(null);
   const [testResult, setTestResult] = useState({});
+
+  // RAG / VLM per-store settings. We lazy-load when the user expands a
+  // store row to avoid N parallel /settings calls on mount for tenants
+  // with many stores.
+  const [aiSettings, setAiSettings] = useState({}); // { storeId: settings }
+  const [aiSavingStore, setAiSavingStore] = useState(null);
+  const [expandedAiStore, setExpandedAiStore] = useState(null);
+
+  const loadAiSettings = async (storeId) => {
+    if (aiSettings[storeId]) return;
+    try {
+      const s = await getStoreSettings(storeId);
+      setAiSettings(prev => ({ ...prev, [storeId]: s }));
+    } catch (err) {
+      console.warn('store_settings_load_error', err);
+    }
+  };
+
+  const handleSaveAiSettings = async (storeId, patch) => {
+    setAiSavingStore(storeId);
+    try {
+      const updated = await patchStoreSettings(storeId, patch);
+      setAiSettings(prev => ({ ...prev, [storeId]: updated }));
+    } finally {
+      setAiSavingStore(null);
+    }
+  };
 
   useEffect(() => {
     Promise.all([getUserProfile(), getMyStores()])
@@ -224,6 +255,68 @@ function Settings() {
                 )}
               </div>
             </motion.div>
+
+            {/* AI (RAG + VLM) per-store settings */}
+            {stores.length > 0 && (
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.18 }}
+                className="bg-[#0f172a]/60 backdrop-blur-xl rounded-3xl border border-slate-800/50 overflow-hidden"
+              >
+                <div className="p-6 border-b border-slate-800/50 bg-slate-900/40">
+                  <h2 className="text-xs font-black uppercase tracking-widest text-slate-300 flex items-center gap-2">
+                    <Brain size={14} className="text-indigo-400" /> AI шалгуур (RAG + VLM)
+                  </h2>
+                </div>
+                <div className="p-6 space-y-4">
+                  <p className="text-xs text-slate-400">
+                    Хуурамч анхааруулгыг RAG (мэдэгдсэн FP-н текст хайлт) болон Qwen2.5-VL
+                    (зураг ойлгох model) ашиглан шүүж байна. Тус бүр дэлгүүр өөрийн босготой.
+                  </p>
+                  {stores.map(store => {
+                    const expanded = expandedAiStore === store.id;
+                    const cfg = aiSettings[store.id];
+                    return (
+                      <div key={store.id} className="rounded-xl border border-slate-800/50 bg-slate-900/30">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const next = expanded ? null : store.id;
+                            setExpandedAiStore(next);
+                            if (next) loadAiSettings(next);
+                          }}
+                          className="w-full p-4 flex items-center justify-between text-left hover:bg-slate-800/30 transition-colors"
+                        >
+                          <span className="flex items-center gap-2 text-sm font-bold text-white">
+                            <Store size={14} className="text-slate-500" />
+                            {store.name}
+                          </span>
+                          <span className="text-[10px] text-slate-500 uppercase tracking-wider">
+                            {expanded ? 'Хаах' : 'Засах'}
+                          </span>
+                        </button>
+                        {expanded && (
+                          <div className="px-4 pb-4">
+                            {!cfg ? (
+                              <div className="flex items-center justify-center py-8 text-slate-500 text-sm">
+                                <Loader2 size={14} className="animate-spin mr-2" /> Ачаалж байна…
+                              </div>
+                            ) : (
+                              <RagVlmSettings
+                                initialValue={cfg}
+                                saving={aiSavingStore === store.id}
+                                onSave={(patch) => handleSaveAiSettings(store.id, patch)}
+                              />
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </motion.div>
+            )}
 
             {/* ACTIONS */}
             <motion.div

@@ -1,0 +1,13 @@
+# Sentry agent configuration template.
+#
+# Env vars override these fields at runtime:
+#   SENTRY_SERVER_URL
+#   SENTRY_API_KEY
+#   SENTRY_TENANT_ID
+#   SENTRY_HEARTBEAT_INTERVAL_S
+
+server_url: "https://api.sentry.mn"
+tenant_id: "00000000-0000-0000-0000-000000000000"
+api_key: "sk_live_replace_me"
+
+heartbeat_interval_s: 60

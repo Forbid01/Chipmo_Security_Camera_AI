@@ -10,7 +10,7 @@ rather than silently drifting from the documented contract.
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class TelegramChannel(BaseModel):
@@ -39,6 +39,42 @@ class NotificationChannels(BaseModel):
     email: EmailChannel = Field(default_factory=EmailChannel)
 
 
+class SeverityThresholdsSchema(BaseModel):
+    """Per-store 4-level classifier breakpoints (T5-01).
+
+    The AI scoring loop classifies each behavior score into
+    green/yellow/orange/red using these thresholds. Defaults match the
+    T5 spec (40/70/85). Any override must remain strictly increasing;
+    the validator enforces that so a typo in the admin UI can't collapse
+    two tiers into one.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    yellow: float = Field(default=40.0, ge=0.0)
+    orange: float = Field(default=70.0, ge=0.0)
+    red: float = Field(default=85.0, ge=0.0)
+
+    @model_validator(mode="after")
+    def _strictly_increasing(self) -> "SeverityThresholdsSchema":
+        if not (self.yellow < self.orange < self.red):
+            raise ValueError(
+                "severity thresholds must be strictly increasing "
+                f"(yellow={self.yellow}, orange={self.orange}, red={self.red})"
+            )
+        return self
+
+    def classify(self, score: float) -> str:
+        """Delegate to the domain classifier so callers that hold a
+        schema instance don't have to round-trip through
+        `to_domain()`."""
+        from app.core.severity import SeverityThresholds as _Domain
+
+        return _Domain(
+            yellow=self.yellow, orange=self.orange, red=self.red
+        ).classify(score)
+
+
 class StoreSettings(BaseModel):
     """Authoritative per-store AI config.
 
@@ -48,9 +84,18 @@ class StoreSettings(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    # Alert decision
+    # Alert decision — legacy single threshold kept for backward
+    # compatibility with the auto-learner's learned value. The 4-level
+    # classifier (T5-01) below is the new primary signal; when both
+    # are present the classifier wins.
     alert_threshold: float = Field(default=80.0, ge=0.0)
     alert_cooldown_seconds: int = Field(default=60, ge=0)
+
+    # 4-level severity thresholds (T5-01). Store-level override of the
+    # module defaults in app/core/severity.py.
+    severity_thresholds: SeverityThresholdsSchema = Field(
+        default_factory=SeverityThresholdsSchema
+    )
 
     # Night mode
     night_mode_enabled: bool = True
@@ -94,6 +139,7 @@ class StoreSettingsPatch(BaseModel):
 
     alert_threshold: float | None = Field(default=None, ge=0.0)
     alert_cooldown_seconds: int | None = Field(default=None, ge=0)
+    severity_thresholds: SeverityThresholdsSchema | None = None
     night_mode_enabled: bool | None = None
     night_luminance_threshold: float | None = Field(default=None, ge=0.0, le=255.0)
     dynamic_fps_enabled: bool | None = None
