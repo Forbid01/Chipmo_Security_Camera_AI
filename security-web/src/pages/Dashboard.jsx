@@ -5,7 +5,8 @@ import {
   ShieldCheck, List, Activity, Clock, Building2,
   Settings, LogOut, User, Camera, Store, Loader2,
   Menu, X, Download, Wifi, WifiOff, Bell, BellOff,
-  Plus, ArrowRight, ThumbsUp, ThumbsDown, Image as ImageIcon
+  Plus, ArrowRight, ThumbsUp, ThumbsDown, Image as ImageIcon,
+  LayoutGrid, Maximize2
 } from 'lucide-react';
 import { submitAlertFeedback, API_BASE_URL } from '../services/api';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -31,6 +32,7 @@ function Dashboard() {
   const [cameraStatuses, setCameraStatuses] = useState({});
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
   const [selectedAlert, setSelectedAlert] = useState(null);
+  const [viewMode, setViewMode] = useState('single'); // 'single' | 'grid'
   const prevAlertCount = useRef(0);
   const [userInfo, setUserInfo] = useState(() => {
     const stored = localStorage.getItem('user');
@@ -146,6 +148,19 @@ function Dashboard() {
     () => cameras.filter(c => c.store_id === activeStore),
     [cameras, activeStore],
   );
+
+  // Camera IDs that fired an alert in the last 5 minutes — used to pulse
+  // the grid cell border red so operators spot the hot camera instantly.
+  const camerasWithRecentAlerts = useMemo(() => {
+    const ids = new Set();
+    const cutoff = Date.now() - 5 * 60 * 1000;
+    for (const alert of alerts) {
+      if (!alert.camera_id || !alert.event_time) continue;
+      const t = new Date(alert.event_time.replace(' ', 'T')).getTime();
+      if (!isNaN(t) && t >= cutoff) ids.add(alert.camera_id);
+    }
+    return ids;
+  }, [alerts]);
 
   const filteredAlerts = useMemo(() => {
     const result = [];
@@ -487,6 +502,30 @@ function Dashboard() {
                   </p>
                 </div>
                 <div className="hidden md:flex items-center gap-3">
+                  {/* Single / Grid view toggle */}
+                  <div className="flex items-center rounded-full border border-slate-800 bg-slate-900/50 p-0.5">
+                    <button
+                      onClick={() => setViewMode('single')}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-bold uppercase transition-all ${
+                        viewMode === 'single'
+                          ? 'bg-blue-600 text-white shadow'
+                          : 'text-slate-500 hover:text-slate-300'
+                      }`}
+                    >
+                      <Maximize2 size={11} /> Single
+                    </button>
+                    <button
+                      onClick={() => setViewMode('grid')}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-bold uppercase transition-all ${
+                        viewMode === 'grid'
+                          ? 'bg-blue-600 text-white shadow'
+                          : 'text-slate-500 hover:text-slate-300'
+                      }`}
+                    >
+                      <LayoutGrid size={11} /> Grid
+                    </button>
+                  </div>
+
                   {/* Notification toggle (desktop) */}
                   <button
                     onClick={notificationsEnabled ? () => setNotificationsEnabled(false) : enableNotifications}
@@ -506,24 +545,57 @@ function Dashboard() {
                 </div>
               </div>
 
-              {/* LIVE FEED */}
+              {/* LIVE FEED — single or grid */}
               <div className="bg-black rounded-2xl lg:rounded-[3rem] border border-slate-800/50 overflow-hidden shadow-2xl relative ring-1 ring-white/5">
                 <div className="p-3 lg:p-5 bg-slate-900/40 border-b border-slate-800/50 flex justify-between items-center font-mono">
                   <span className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-blue-400">
-                    <Activity size={14} className="animate-pulse" /> {storeCameras.find(c => c.id === activeCamera)?.name || 'Камер'}
+                    <Activity size={14} className="animate-pulse" />
+                    {viewMode === 'single'
+                      ? (storeCameras.find(c => c.id === activeCamera)?.name || 'Камер')
+                      : `${storeCameras.length} камер — Grid`}
                   </span>
-                  <span className="bg-red-600 text-[9px] px-3 py-1 rounded-full text-white font-bold animate-pulse uppercase">Live</span>
-                </div>
-                <div className="w-full relative aspect-video flex items-center justify-center bg-slate-950">
-                  {VIDEO_FEED_URL ? (
-                    <LiveStream src={VIDEO_FEED_URL} cameraId={activeCamera} />
-                  ) : (
-                    <div className="flex flex-col items-center gap-4 text-slate-600">
-                      <Camera size={48} />
-                      <p className="text-xs font-mono uppercase tracking-widest">Камер сонгоно уу</p>
+                  <div className="flex items-center gap-2">
+                    {/* Mobile toggle */}
+                    <div className="flex md:hidden items-center rounded-full border border-slate-700 bg-slate-900 p-0.5">
+                      <button
+                        onClick={() => setViewMode('single')}
+                        className={`p-1.5 rounded-full transition-all ${viewMode === 'single' ? 'bg-blue-600 text-white' : 'text-slate-500'}`}
+                      >
+                        <Maximize2 size={10} />
+                      </button>
+                      <button
+                        onClick={() => setViewMode('grid')}
+                        className={`p-1.5 rounded-full transition-all ${viewMode === 'grid' ? 'bg-blue-600 text-white' : 'text-slate-500'}`}
+                      >
+                        <LayoutGrid size={10} />
+                      </button>
                     </div>
-                  )}
+                    <span className="bg-red-600 text-[9px] px-3 py-1 rounded-full text-white font-bold animate-pulse uppercase">Live</span>
+                  </div>
                 </div>
+
+                {viewMode === 'single' ? (
+                  <div className="w-full relative aspect-video flex items-center justify-center bg-slate-950">
+                    {VIDEO_FEED_URL ? (
+                      <LiveStream src={VIDEO_FEED_URL} cameraId={activeCamera} />
+                    ) : (
+                      <div className="flex flex-col items-center gap-4 text-slate-600">
+                        <Camera size={48} />
+                        <p className="text-xs font-mono uppercase tracking-widest">Камер сонгоно уу</p>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <CameraGrid
+                    cameras={storeCameras}
+                    activeCamera={activeCamera}
+                    camerasWithRecentAlerts={camerasWithRecentAlerts}
+                    onCameraClick={(camId) => {
+                      setActiveCamera(camId);
+                      setViewMode('single');
+                    }}
+                  />
+                )}
               </div>
 
               {/* CHARTS */}
@@ -606,7 +678,7 @@ function Dashboard() {
 
 // Visibility-aware MJPEG stream. Closes the connection when the tab is hidden
 // or the component is off-screen; rAF-scheduled resume avoids a render spike.
-const LiveStream = React.memo(function LiveStream({ src, cameraId }) {
+const LiveStream = React.memo(function LiveStream({ src, cameraId, onLoad, className }) {
   const imgRef = useRef(null);
   const [active, setActive] = useState(
     typeof document === 'undefined' || document.visibilityState === 'visible',
@@ -629,7 +701,6 @@ const LiveStream = React.memo(function LiveStream({ src, cameraId }) {
     return () => {
       document.removeEventListener('visibilitychange', handleVisibility);
       if (rafId) cancelAnimationFrame(rafId);
-      // Force-close the MJPEG socket on unmount.
       if (img) img.src = '';
     };
   }, []);
@@ -654,10 +725,116 @@ const LiveStream = React.memo(function LiveStream({ src, cameraId }) {
       alt="AI Feed"
       decoding="async"
       loading="lazy"
-      className="w-full h-full object-contain"
+      onLoad={onLoad}
+      className={className ?? 'w-full h-full object-contain'}
     />
   );
 });
+
+// ─── Grid helpers ────────────────────────────────────────────────────────────
+
+function getGridClass(count) {
+  if (count <= 1) return 'grid-cols-1';
+  if (count <= 2) return 'grid-cols-2';
+  if (count <= 4) return 'grid-cols-2';
+  if (count <= 6) return 'grid-cols-3';
+  if (count <= 8) return 'grid-cols-4';
+  if (count <= 9) return 'grid-cols-3';
+  return 'grid-cols-4';
+}
+
+// Single cell in the grid — manages its own loading state.
+function GridCameraCell({ cam, isActive, hasAlert, onClick }) {
+  const [loaded, setLoaded] = useState(false);
+  const src = getVideoFeedUrlV2(cam.id);
+
+  // If the MJPEG stream hasn't fired onLoad within 6s, stop showing the spinner
+  // so a dead camera doesn't show a permanent loader.
+  useEffect(() => {
+    const t = setTimeout(() => setLoaded(true), 6000);
+    return () => clearTimeout(t);
+  }, [cam.id]);
+
+  return (
+    <div
+      onClick={onClick}
+      title={`${cam.name} — дарж томруулах`}
+      className={`
+        relative cursor-pointer rounded-xl overflow-hidden bg-slate-950 aspect-video
+        border-2 transition-all duration-300 group
+        ${hasAlert
+          ? 'border-red-500 shadow-[0_0_12px_rgba(239,68,68,0.5)]'
+          : isActive
+            ? 'border-blue-500/70'
+            : 'border-slate-800 hover:border-slate-600'
+        }
+      `}
+    >
+      {/* Loading overlay — fades out on first frame */}
+      {!loaded && (
+        <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 bg-slate-950/90">
+          <Loader2 size={18} className="animate-spin text-slate-500" />
+          <span className="text-[9px] font-mono text-slate-600 uppercase tracking-widest">Холбогдож байна...</span>
+        </div>
+      )}
+
+      {/* Alert pulse ring */}
+      {hasAlert && (
+        <div className="absolute inset-0 z-20 rounded-xl border-2 border-red-500 animate-pulse pointer-events-none" />
+      )}
+
+      <LiveStream
+        src={src}
+        cameraId={cam.id}
+        onLoad={() => setLoaded(true)}
+        className="w-full h-full object-contain"
+      />
+
+      {/* Name + alert badge overlay */}
+      <div className="absolute bottom-0 left-0 right-0 z-10 px-2 py-1.5 bg-gradient-to-t from-black/80 to-transparent">
+        <div className="flex items-center justify-between">
+          <p className="text-[10px] font-bold text-white truncate">{cam.name}</p>
+          {hasAlert && (
+            <span className="text-[8px] font-black text-red-400 uppercase animate-pulse">● Alert</span>
+          )}
+        </div>
+      </div>
+
+      {/* Hover enlarge hint */}
+      <div className="absolute top-2 right-2 z-10 opacity-0 group-hover:opacity-100 transition-opacity">
+        <div className="p-1 rounded-md bg-black/60">
+          <Maximize2 size={10} className="text-white" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Multi-camera grid for the current store.
+function CameraGrid({ cameras, activeCamera, camerasWithRecentAlerts, onCameraClick }) {
+  if (cameras.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-slate-600 gap-3">
+        <Camera size={36} />
+        <p className="text-xs font-mono uppercase tracking-widest">Энэ дэлгүүрт камер бүртгэлгүй</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className={`grid ${getGridClass(cameras.length)} gap-1 p-2`}>
+      {cameras.map(cam => (
+        <GridCameraCell
+          key={cam.id}
+          cam={cam}
+          isActive={cam.id === activeCamera}
+          hasAlert={camerasWithRecentAlerts.has(cam.id)}
+          onClick={() => onCameraClick(cam.id)}
+        />
+      ))}
+    </div>
+  );
+}
 
 // Alert Detail Modal
 function AlertDetailModal({ alert, onClose, onPlayVideo }) {
