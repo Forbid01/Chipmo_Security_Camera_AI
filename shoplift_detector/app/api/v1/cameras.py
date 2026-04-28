@@ -78,7 +78,7 @@ async def list_manufacturers(user: CurrentUser) -> list[ManufacturerItem]:
 )
 async def probe_camera(
     payload: CameraProbeRequest,
-    tenant: CurrentTenant,
+    user: CurrentUser,
 ) -> CameraProbeResponse:
     """Build all candidate RTSP URLs for the given manufacturer + IP + credentials,
     then test each one in score order.  Returns the first URL that succeeds plus
@@ -109,17 +109,6 @@ async def probe_camera(
         result = run_camera_test(url, manufacturer_id=payload.manufacturer_id)
         last_result = result
         if result.ok:
-            await broker.publish(
-                str(tenant["tenant_id"]),
-                make_event(
-                    CAMERA_TESTED,
-                    payload={
-                        "ok": True,
-                        "fps": result.fps,
-                        "manufacturer_id": payload.manufacturer_id,
-                    },
-                ),
-            )
             return CameraProbeResponse(
                 ok=True,
                 url=url,
