@@ -324,6 +324,13 @@ export const deleteMyCamera = async (id) => {
   return response.data;
 };
 
+export const getReidMatches = async (alertId, { threshold = 0.75, sinceMinutes = 30, limit = 5 } = {}) => {
+  const response = await api.get(`/api/v1/cameras/reid/matches/${alertId}`, {
+    params: { threshold, since_minutes: sinceMinutes, limit },
+  });
+  return response.data;
+};
+
 // ============================================
 // AI FEEDBACK & AUTO-LEARNING (NEW)
 // ============================================

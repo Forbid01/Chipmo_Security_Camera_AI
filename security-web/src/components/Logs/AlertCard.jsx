@@ -1,12 +1,15 @@
 import { memo, useState } from 'react';
-import { Image, PlayCircle, TriangleAlert, ThumbsUp, ThumbsDown, Loader2 } from 'lucide-react';
-import { submitAlertFeedback } from '../../services/api';
+import { Image, PlayCircle, TriangleAlert, ThumbsUp, ThumbsDown, Loader2, ScanFace, ChevronDown, ChevronUp } from 'lucide-react';
+import { submitAlertFeedback, getReidMatches } from '../../services/api';
 import AlertVerdictBadges from '../Alerts/AlertVerdictBadges';
 import AlertVlmDetail from '../Alerts/AlertVlmDetail';
 
 const AlertCardInner = ({ alert, onSelect }) => {
   const [feedbackStatus, setFeedbackStatus] = useState(alert?.feedback_status || 'unreviewed');
   const [loading, setLoading] = useState(false);
+  const [reidOpen, setReidOpen] = useState(false);
+  const [reidMatches, setReidMatches] = useState(null);
+  const [reidLoading, setReidLoading] = useState(false);
 
   const description = alert?.description || 'Сэжигтэй үйлдэл илэрлээ';
   const eventTime = alert?.event_time || 'Тодорхойгүй';
@@ -23,6 +26,21 @@ const AlertCardInner = ({ alert, onSelect }) => {
       console.error('Feedback error:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleReidToggle = async () => {
+    if (reidOpen) { setReidOpen(false); return; }
+    setReidOpen(true);
+    if (reidMatches !== null) return;
+    setReidLoading(true);
+    try {
+      const data = await getReidMatches(alert.id);
+      setReidMatches(data.matches || []);
+    } catch {
+      setReidMatches([]);
+    } finally {
+      setReidLoading(false);
     }
   };
 
@@ -84,6 +102,61 @@ const AlertCardInner = ({ alert, onSelect }) => {
               <AlertVlmDetail alertId={alert.id} />
             </div>
           )}
+
+          {/* Cross-camera Re-ID matches */}
+          <div className="mt-3">
+            <button
+              type="button"
+              onClick={handleReidToggle}
+              className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500 hover:text-violet-400 transition-colors"
+            >
+              <ScanFace size={12} />
+              Бусад камер дахь ижил хүн
+              {reidOpen ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
+            </button>
+
+            {reidOpen && (
+              <div className="mt-2 rounded-xl border border-violet-500/20 bg-violet-500/5 p-3">
+                {reidLoading ? (
+                  <div className="flex items-center gap-2 text-[10px] text-slate-500">
+                    <Loader2 size={10} className="animate-spin" />
+                    Хайж байна...
+                  </div>
+                ) : reidMatches && reidMatches.length > 0 ? (
+                  <div className="space-y-2">
+                    {reidMatches.map((m, i) => (
+                      <div key={i} className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <ScanFace size={10} className="text-violet-400 shrink-0" />
+                          <span className="text-[10px] text-slate-300 font-mono">
+                            Камер #{m.camera_id}
+                          </span>
+                          {m.alert_id && (
+                            <span className="text-[10px] text-slate-500">
+                              · Alert #{m.alert_id}
+                            </span>
+                          )}
+                          <span className="text-[10px] text-slate-600">
+                            {m.captured_at ? new Date(m.captured_at).toLocaleTimeString('mn-MN') : ''}
+                          </span>
+                        </div>
+                        <span className={`text-[10px] font-black font-mono ${
+                          m.similarity >= 0.9 ? 'text-red-400' :
+                          m.similarity >= 0.8 ? 'text-orange-400' : 'text-yellow-400'
+                        }`}>
+                          {Math.round(m.similarity * 100)}%
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-[10px] text-slate-600">
+                    Сүүлийн 30 минутад бусад камерт ижил хүн илрэлгүй
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
 
           <div className="mt-4 flex items-center gap-2">
             {imageUrl ? (

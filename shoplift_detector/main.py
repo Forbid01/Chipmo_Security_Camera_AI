@@ -176,6 +176,7 @@ async def _load_cameras_from_db():
                     alert_threshold=cam.get("alert_threshold", 80.0),
                     alert_cooldown=cam.get("alert_cooldown", 15),
                     shelf_zones=cam.get("shelf_zones") or [],
+                    substream_url=cam.get("substream_url") or None,
                 )
 
             logger.info("cameras_loaded", count=len(cameras))

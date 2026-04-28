@@ -313,6 +313,23 @@ class ShopliftDetector:
                             alert_id,
                         )
 
+                # Cross-camera Re-ID: extract appearance embedding for the
+                # alerted person and search for matches on other cameras.
+                # Runs async in the same event loop; failures never surface
+                # to the caller (non-critical feature).
+                try:
+                    from app.services.reid_service import reid_service
+                    await reid_service.process_alert_embedding(
+                        frame=frame_to_save,
+                        bbox=bbox,
+                        store_id=store_id or 0,
+                        camera_id=camera_id or 0,
+                        track_id=int(yolo_id),
+                        alert_id=alert_id,
+                    )
+                except Exception:
+                    logger.debug("reid_process_alert_embedding_failed", exc_info=True)
+
             # Suppressed alerts stay in the DB (so dashboards can chart
             # suppression rate) but never fire downstream notifications.
             if pipeline_decision.suppressed:

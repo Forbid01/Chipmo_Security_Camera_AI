@@ -26,7 +26,7 @@ function MyCameras() {
   const [deleteConfirm, setDeleteConfirm] = useState(null);
 
   const [form, setForm] = useState({
-    name: '', url: '', camera_type: 'rtsp', store_id: '', is_ai_enabled: true,
+    name: '', url: '', camera_type: 'rtsp', store_id: '', is_ai_enabled: true, substream_url: '',
   });
 
   const loadData = async () => {
@@ -44,7 +44,7 @@ function MyCameras() {
   useEffect(() => { loadData(); }, []);
 
   const resetForm = () => {
-    setForm({ name: '', url: '', camera_type: 'rtsp', store_id: '', is_ai_enabled: true });
+    setForm({ name: '', url: '', camera_type: 'rtsp', store_id: '', is_ai_enabled: true, substream_url: '' });
     setShowForm(false);
     setEditingId(null);
   };
@@ -55,7 +55,11 @@ function MyCameras() {
     setSaving(true);
 
     try {
-      const payload = { ...form, store_id: parseInt(form.store_id) };
+      const payload = {
+        ...form,
+        store_id: parseInt(form.store_id),
+        substream_url: form.substream_url?.trim() || null,
+      };
       if (editingId) {
         await updateMyCamera(editingId, payload);
       } else {
@@ -77,6 +81,7 @@ function MyCameras() {
       camera_type: cam.camera_type || 'rtsp',
       store_id: String(cam.store_id || ''),
       is_ai_enabled: cam.is_ai_enabled !== false,
+      substream_url: cam.substream_url || '',
     });
     setEditingId(cam.id);
     setShowForm(true);
@@ -176,9 +181,12 @@ function MyCameras() {
                   </div>
                 </div>
 
-                {/* URL */}
+                {/* Primary URL */}
                 <div>
-                  <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-2">Камерын URL / Address</label>
+                  <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-2">
+                    Камерын URL / Address
+                    <span className="ml-1.5 text-slate-600 normal-case tracking-normal font-normal">(дэлгэц + AI)</span>
+                  </label>
                   <input
                     type="text"
                     value={form.url}
@@ -187,6 +195,28 @@ function MyCameras() {
                     required
                     className="w-full px-4 py-3 rounded-xl bg-slate-900/80 border border-slate-700/50 text-white text-sm font-mono focus:border-blue-500 focus:outline-none transition-colors"
                   />
+                </div>
+
+                {/* Sub-stream URL */}
+                <div>
+                  <label className="block text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-2">
+                    Sub-stream URL
+                    <span className="ml-1.5 text-slate-600 normal-case tracking-normal font-normal">
+                      (заавал биш — зөвхөн AI-д бага нягтаршилтай stream)
+                    </span>
+                  </label>
+                  <input
+                    type="text"
+                    value={form.substream_url}
+                    onChange={(e) => setForm({ ...form, substream_url: e.target.value })}
+                    placeholder="rtsp://192.168.1.100:554/stream2  — хоосон бол primary stream ашиглана"
+                    className="w-full px-4 py-3 rounded-xl bg-slate-900/80 border border-slate-700/50 text-white text-sm font-mono placeholder:text-slate-700 focus:border-violet-500 focus:outline-none transition-colors"
+                  />
+                  {form.substream_url?.trim() && (
+                    <p className="mt-1.5 text-[10px] text-violet-400/80">
+                      AI inference энэ stream-ээс уншина. Primary stream зөвхөн дэлгэцэд.
+                    </p>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
@@ -281,6 +311,9 @@ function MyCameras() {
                         <span className="text-[10px] font-mono text-slate-600 uppercase">{cam.camera_type || 'N/A'}</span>
                         {cam.is_ai_enabled !== false && (
                           <span className="text-[10px] font-bold text-cyan-400/70">AI</span>
+                        )}
+                        {cam.substream_url && (
+                          <span className="text-[10px] font-bold text-violet-400/70">SUB</span>
                         )}
                       </div>
                     </div>

@@ -15,14 +15,15 @@ class CameraRepository:
 
     async def create(self, data: CameraCreate) -> int | None:
         query = text("""
-            INSERT INTO cameras (name, url, camera_type, store_id, is_ai_enabled, organization_id)
-            VALUES (:name, :url, :type, :store_id, :ai, :org_id)
+            INSERT INTO cameras (name, url, camera_type, store_id, is_ai_enabled, organization_id, substream_url)
+            VALUES (:name, :url, :type, :store_id, :ai, :org_id, :substream_url)
             RETURNING id
         """)
         result = await self.db.execute(query, {
             "name": data.name, "url": data.url, "type": data.camera_type,
             "store_id": data.store_id, "ai": data.is_ai_enabled,
             "org_id": data.organization_id,
+            "substream_url": getattr(data, "substream_url", None),
         })
         await self.db.commit()
         row = result.fetchone()

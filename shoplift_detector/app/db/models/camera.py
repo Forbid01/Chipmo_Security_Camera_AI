@@ -24,6 +24,12 @@ class Camera(Base, TimestampMixin):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     is_ai_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
+    # Optional secondary RTSP URL (lower resolution). When set, the AI
+    # inference loop reads from this stream; the primary URL is used only
+    # for display. Keeps full-res display smooth while AI processes cheaper
+    # sub-stream frames.
+    substream_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+
     # Shelf ROI polygons (normalized 0..1 coords). Empty list = fall back to
     # COCO class detection. See alembic 20260423_01 for schema.
     shelf_zones: Mapped[list[dict[str, Any]]] = mapped_column(

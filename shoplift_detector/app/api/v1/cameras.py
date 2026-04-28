@@ -102,6 +102,7 @@ async def create_camera(data: CameraCreate, admin: SuperAdmin, db: DB):
         url=data.url,
         camera_type=data.camera_type,
         is_ai_enabled=data.is_ai_enabled,
+        substream_url=data.substream_url or None,
     )
 
     return APIResponse(message="Камер нэмэгдлээ", data={"camera_id": cam_id})
@@ -130,6 +131,7 @@ async def update_camera(camera_id: int, data: CameraUpdate, admin: SuperAdmin, d
                         camera_type=c.get("camera_type", "rtsp"),
                         is_ai_enabled=c.get("is_ai_enabled", True),
                         shelf_zones=c.get("shelf_zones") or [],
+                        substream_url=c.get("substream_url") or None,
                     )
                     break
 
@@ -230,3 +232,70 @@ async def update_camera_shelf_zones(
         message="Shelf zones шинэчлэгдлээ",
         data={"camera_id": camera_id, "count": len(zones_payload)},
     )
+
+
+@router.get(
+    "/reid/matches/{alert_id}",
+    summary="Cross-camera Re-ID matches for an alert.",
+)
+async def get_reid_matches(
+    alert_id: int,
+    user: CurrentUser,
+    db: DB,
+    threshold: float = 0.75,
+    since_minutes: int = 30,
+    limit: int = 5,
+) -> dict:
+    """Return appearance-similarity matches from other cameras for the person
+    in `alert_id`.  Queries the `person_embeddings` pgvector table.
+
+    - `threshold`: cosine similarity cutoff (0–1, default 0.75)
+    - `since_minutes`: search window in minutes (default 30)
+    - `limit`: max matches to return (default 5)
+    """
+    from sqlalchemy import text
+
+    from app.services.reid_service import reid_service
+
+    # Fetch the embedding that was stored when this alert fired.
+    result = await db.execute(
+        text(
+            """
+            SELECT pe.embedding::text, pe.camera_id, pe.store_id,
+                   pe.track_id, pe.bbox_x1, pe.bbox_y1, pe.bbox_x2, pe.bbox_y2
+            FROM person_embeddings pe
+            WHERE pe.alert_id = :alert_id
+            ORDER BY pe.created_at DESC
+            LIMIT 1
+            """
+        ),
+        {"alert_id": alert_id},
+    )
+    row = result.mappings().fetchone()
+    if row is None:
+        return {"alert_id": alert_id, "matches": [], "note": "no embedding stored for this alert"}
+
+    import numpy as np
+
+    raw = row["embedding"]
+    # pgvector returns the vector as a string like "[0.1,0.2,...]"
+    embedding = np.array(
+        [float(x) for x in raw.strip("[]").split(",")], dtype=np.float32
+    )
+
+    matches = await reid_service.find_cross_camera_matches(
+        db,
+        store_id=row["store_id"],
+        embedding=embedding,
+        exclude_camera_id=row["camera_id"],
+        threshold=threshold,
+        since_minutes=since_minutes,
+        limit=limit,
+    )
+
+    return {
+        "alert_id": alert_id,
+        "source_camera_id": row["camera_id"],
+        "store_id": row["store_id"],
+        "matches": matches,
+    }

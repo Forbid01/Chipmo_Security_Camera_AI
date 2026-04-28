@@ -66,6 +66,8 @@ class CameraCreate(BaseModel):
     store_id: int
     is_ai_enabled: bool = True
     organization_id: int | None = None
+    # Optional sub-stream URL for AI inference (primary URL used for display).
+    substream_url: str | None = None
 
 
 class CameraUpdate(BaseModel):
@@ -75,6 +77,7 @@ class CameraUpdate(BaseModel):
     store_id: int | None = None
     is_active: bool | None = None
     is_ai_enabled: bool | None = None
+    substream_url: str | None = None
 
 
 class CameraResponse(BaseModel):
@@ -88,6 +91,7 @@ class CameraResponse(BaseModel):
     organization_name: str | None = None
     is_active: bool
     is_ai_enabled: bool
+    substream_url: str | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}

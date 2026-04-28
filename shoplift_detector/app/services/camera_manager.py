@@ -66,6 +66,10 @@ class CameraState:
     # service so the detector can score "hand enters shelf" interactions
     # independently of COCO object classes. Empty = fall back to legacy.
     shelf_zones: list = field(default_factory=list)
+    # Optional secondary (sub-stream) RTSP URL for AI inference.
+    # When set: primary stream feeds display only; sub-stream feeds AI.
+    # When unset: primary stream feeds both display and AI (legacy behavior).
+    substream_url: str | None = None
     # Runtime state. `frame_buffer` is a 1-slot deque so an appendleft()
     # by the capture thread atomically drops the previous (stale) frame —
     # readers always see the newest frame, never a torn write.
@@ -80,6 +84,10 @@ class CameraState:
     last_health_report_monotonic: float = 0.0
     last_offline_notification_monotonic: float = 0.0
     _stop_event: threading.Event = field(default_factory=threading.Event)
+    # Sub-stream runtime state (only used when substream_url is set)
+    _substream_thread: threading.Thread | None = None
+    _substream_stop_event: threading.Event = field(default_factory=threading.Event)
+    _substream_connected: bool = False
 
     @property
     def latest_frame(self):
@@ -154,7 +162,8 @@ class CameraManager:
     def register_camera(self, camera_id: int, store_id: int, name: str,
                         url: str, camera_type: str, is_ai_enabled: bool = True,
                         alert_threshold: float = 80.0, alert_cooldown: int = 15,
-                        shelf_zones: list | None = None):
+                        shelf_zones: list | None = None,
+                        substream_url: str | None = None):
         with self._lock:
             if camera_id in self._cameras:
                 self.unregister_camera(camera_id)
@@ -164,16 +173,24 @@ class CameraManager:
                 url=url, camera_type=camera_type, is_ai_enabled=is_ai_enabled,
                 alert_threshold=alert_threshold, alert_cooldown=alert_cooldown,
                 shelf_zones=list(shelf_zones) if shelf_zones else [],
+                substream_url=substream_url or None,
             )
             self._cameras[camera_id] = state
             self._start_capture(state)
-            logger.info(f"Camera registered: {name} (id={camera_id}, store={store_id})")
+            if state.substream_url:
+                self._start_substream_capture(state)
+            logger.info(
+                f"Camera registered: {name} (id={camera_id}, store={store_id}"
+                + (f", substream=yes" if state.substream_url else "")
+                + ")"
+            )
 
     def unregister_camera(self, camera_id: int):
         with self._lock:
             state = self._cameras.pop(camera_id, None)
             if state:
                 state._stop_event.set()
+                state._substream_stop_event.set()
                 logger.info(f"Camera unregistered: {state.name} (id={camera_id})")
 
     def update_shelf_zones(self, camera_id: int, zones: list) -> bool:
@@ -198,6 +215,17 @@ class CameraManager:
             name=f"cam-{state.camera_id}-{state.name}",
         )
         state.thread = thread
+        thread.start()
+
+    def _start_substream_capture(self, state: CameraState):
+        """Start secondary capture thread for AI sub-stream."""
+        thread = threading.Thread(
+            target=self._substream_capture_loop,
+            args=(state,),
+            daemon=True,
+            name=f"sub-{state.camera_id}-{state.name}",
+        )
+        state._substream_thread = thread
         thread.start()
 
     def _open_capture(self, state: CameraState, source):
@@ -401,7 +429,10 @@ class CameraManager:
                 self._report_camera_health(state)
 
                 ai_counter += 1
-                if state.is_ai_enabled and ai_counter % skip_n == 0:
+                # When a sub-stream is configured the secondary thread handles
+                # AI enqueue; skip it here so the same frame isn't processed twice.
+                has_substream = bool(state.substream_url)
+                if state.is_ai_enabled and not has_substream and ai_counter % skip_n == 0:
                     h, w = frame.shape[:2]
                     scale = target / max(h, w)
                     small = (
@@ -429,6 +460,86 @@ class CameraManager:
             cap.release()
             self._mark_offline(state, "capture_loop_stopped")
             self._report_camera_health(state, force=True)
+
+    def _substream_capture_loop(self, state: CameraState):
+        """Capture loop for the secondary (AI) sub-stream.
+
+        Reads only from `state.substream_url`. Frames are enqueued directly
+        to the AI inference queue — no display buffer update (the primary
+        stream handles display). Shares the same skip_n / target settings
+        as the primary loop so AI cadence stays consistent.
+        """
+        source = _resolve_source(state.substream_url, state.camera_type)
+        if source is None:
+            logger.warning(
+                "[%s] Sub-stream: no usable video source — staying offline",
+                state.name,
+            )
+            state._substream_connected = False
+            return
+
+        logger.info("[%s] Sub-stream: connecting to %s", state.name, source)
+        cap = self._open_capture(state, source)
+        backoff = self._reconnect_base_backoff()
+        max_backoff = self._reconnect_max_backoff()
+        skip_n = max(1, settings.AI_FRAME_SKIP)
+        target = max(64, settings.AI_INPUT_SIZE)
+
+        ai_counter = 0
+        state._substream_connected = cap.isOpened()
+        if state._substream_connected:
+            logger.info("[%s] Sub-stream: connected", state.name)
+
+        try:
+            while not state._substream_stop_event.is_set():
+                if not state._substream_connected:
+                    if state._substream_stop_event.wait(backoff):
+                        break
+                    backoff = self._next_reconnect_backoff(backoff, max_backoff)
+                    cap.release()
+                    cap = self._open_capture(state, source)
+                    if cap.isOpened():
+                        state._substream_connected = True
+                        backoff = self._reconnect_base_backoff()
+                        logger.info("[%s] Sub-stream: reconnected", state.name)
+                    continue
+
+                success, frame = cap.read()
+                if not success:
+                    state._substream_connected = False
+                    continue
+
+                state._substream_connected = True
+                ai_counter += 1
+                if state.is_ai_enabled and ai_counter % skip_n == 0:
+                    h, w = frame.shape[:2]
+                    scale = target / max(h, w)
+                    small = (
+                        cv2.resize(frame, (int(w * scale), int(h * scale)))
+                        if scale < 1.0
+                        else frame
+                    )
+                    # `full_frame` deliberately uses the sub-stream frame so
+                    # alert thumbnails are proportional to the AI input even
+                    # if the primary stream runs at a different resolution.
+                    self._enqueue_ai_frame({
+                        "frame": small,
+                        "full_frame": frame,
+                        "camera_id": state.camera_id,
+                        "store_id": state.store_id,
+                        "source": state.name,
+                        "threshold": state.alert_threshold,
+                        "cooldown": state.alert_cooldown,
+                        "shelf_zones": state.shelf_zones,
+                    })
+
+                time.sleep(0.01)
+        except Exception as exc:
+            logger.error("[%s] Sub-stream error: %s", state.name, exc)
+        finally:
+            cap.release()
+            state._substream_connected = False
+            logger.info("[%s] Sub-stream: capture loop stopped", state.name)
 
     def get_frame(self, camera_id: int) -> object | None:
         state = self._cameras.get(camera_id)
@@ -470,12 +581,15 @@ class CameraManager:
 
         for state in states:
             state._stop_event.set()
+            state._substream_stop_event.set()
             with state.frame_condition:
                 state.frame_condition.notify_all()
 
         for state in states:
             if state.thread and state.thread.is_alive():
                 state.thread.join(timeout=2.0)
+            if state._substream_thread and state._substream_thread.is_alive():
+                state._substream_thread.join(timeout=2.0)
 
         with contextlib.suppress(Exception):
             cv2.destroyAllWindows()

@@ -11,6 +11,7 @@ from .model_version import ModelVersion
 from .organization import Organization
 from .organization_tenant_map import OrganizationTenantMap
 from .otp_challenge import OTP_CHANNELS, OtpChallenge
+from .person_embedding import REID_EMBEDDING_DIM, PersonEmbedding
 from .rag_corpus import RAG_DOC_TYPES, RagCorpusDocument
 from .store import Store
 from .sync_pack import SyncPack
@@ -45,6 +46,8 @@ __all__ = [
     "AlertStateRecord",
     "AuditLog",
     "ModelVersion",
+    "PersonEmbedding",
+    "REID_EMBEDDING_DIM",
     "RagCorpusDocument",
     "RAG_DOC_TYPES",
     "VlmAnnotation",
