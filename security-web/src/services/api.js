@@ -324,6 +324,26 @@ export const deleteMyCamera = async (id) => {
   return response.data;
 };
 
+// ============================================
+// CAMERA WIZARD (manufacturer catalog + probe)
+// ============================================
+
+export const getManufacturers = async () => {
+  const response = await api.get('/api/v1/cameras/manufacturers');
+  return response.data; // [{id, display_name, oui_prefixes, default_port}]
+};
+
+export const probeCamera = async ({ manufacturer_id, ip, user = 'admin', password = '', port = null }) => {
+  const response = await api.post('/api/v1/cameras/probe', {
+    manufacturer_id,
+    ip,
+    user,
+    password,
+    port: port || undefined,
+  });
+  return response.data; // {ok, url, thumbnail_b64, fps, latency_ms, credential_hints, tried_urls}
+};
+
 export const getReidMatches = async (alertId, { threshold = 0.75, sinceMinutes = 30, limit = 5 } = {}) => {
   const response = await api.get(`/api/v1/cameras/reid/matches/${alertId}`, {
     params: { threshold, since_minutes: sinceMinutes, limit },

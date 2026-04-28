@@ -108,3 +108,33 @@ class CameraStatus(BaseModel):
     is_connected: bool
     fps: float | None = None
     last_frame_at: datetime | None = None
+
+
+class ManufacturerItem(BaseModel):
+    id: str
+    display_name: str
+    oui_prefixes: list[str]
+    default_port: int
+
+
+class CameraProbeRequest(BaseModel):
+    """Body for POST /cameras/probe — generate + test candidate URLs."""
+
+    manufacturer_id: str = Field(max_length=64)
+    ip: str = Field(min_length=1, max_length=253)
+    user: str = Field(default="admin", max_length=128)
+    password: str = Field(default="", max_length=128)
+    port: int | None = Field(default=None, ge=1, le=65535)
+
+
+class CameraProbeResponse(BaseModel):
+    ok: bool
+    url: str | None = None          # first URL that succeeded
+    message: str
+    thumbnail_b64: str | None = None
+    thumbnail_width: int | None = None
+    thumbnail_height: int | None = None
+    fps: float | None = None
+    latency_ms: float | None = None
+    credential_hints: list[dict[str, Any]] | None = None
+    tried_urls: int = 0             # how many candidates were attempted

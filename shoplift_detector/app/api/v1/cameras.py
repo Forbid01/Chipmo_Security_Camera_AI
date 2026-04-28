@@ -4,9 +4,12 @@ from app.db.repository.camera_repo import CameraRepository
 from app.db.session import DB
 from app.schemas.camera import (
     CameraCreate,
+    CameraProbeRequest,
+    CameraProbeResponse,
     CameraTestRequest,
     CameraTestResponse,
     CameraUpdate,
+    ManufacturerItem,
     ShelfZonesUpdate,
 )
 from app.schemas.common import APIResponse
@@ -55,6 +58,88 @@ async def test_camera_connection(
     )
 
     return CameraTestResponse(**result.to_dict())
+
+
+@router.get(
+    "/manufacturers",
+    response_model=list[ManufacturerItem],
+    summary="Return the RTSP manufacturer catalog for the URL builder wizard.",
+)
+async def list_manufacturers(user: CurrentUser) -> list[ManufacturerItem]:
+    from app.services.rtsp_patterns import list_manufacturers as _list
+
+    return [ManufacturerItem(**m) for m in _list()]
+
+
+@router.post(
+    "/probe",
+    response_model=CameraProbeResponse,
+    summary="Generate candidate RTSP URLs for a manufacturer and test them in order.",
+)
+async def probe_camera(
+    payload: CameraProbeRequest,
+    tenant: CurrentTenant,
+) -> CameraProbeResponse:
+    """Build all candidate RTSP URLs for the given manufacturer + IP + credentials,
+    then test each one in score order.  Returns the first URL that succeeds plus
+    a thumbnail frame so the UI can confirm visually before saving.
+
+    On failure returns `ok=False` with `credential_hints` so the user can
+    adjust credentials and retry without leaving the wizard.
+    """
+    from app.services.rtsp_patterns import candidate_urls, credential_hints
+
+    urls = candidate_urls(
+        payload.manufacturer_id,
+        ip=payload.ip,
+        user=payload.user,
+        password=payload.password,
+        port=payload.port,
+    )
+
+    if not urls:
+        return CameraProbeResponse(
+            ok=False,
+            message="Энэ үйлдвэрлэгчийн URL загвар олдсонгүй. Гараар URL оруулна уу.",
+            credential_hints=credential_hints(payload.manufacturer_id) or None,
+        )
+
+    last_result = None
+    for i, url in enumerate(urls):
+        result = run_camera_test(url, manufacturer_id=payload.manufacturer_id)
+        last_result = result
+        if result.ok:
+            await broker.publish(
+                str(tenant["tenant_id"]),
+                make_event(
+                    CAMERA_TESTED,
+                    payload={
+                        "ok": True,
+                        "fps": result.fps,
+                        "manufacturer_id": payload.manufacturer_id,
+                    },
+                ),
+            )
+            return CameraProbeResponse(
+                ok=True,
+                url=url,
+                message=result.message,
+                thumbnail_b64=result.thumbnail_b64,
+                thumbnail_width=result.thumbnail_width,
+                thumbnail_height=result.thumbnail_height,
+                fps=result.fps,
+                latency_ms=result.latency_ms,
+                tried_urls=i + 1,
+            )
+
+    # All candidates failed
+    d = last_result.to_dict() if last_result else {}
+    return CameraProbeResponse(
+        ok=False,
+        message=d.get("message", "Бүх URL туршиж үзсэн боловч холбогдсонгүй."),
+        credential_hints=d.get("credential_hints") or credential_hints(payload.manufacturer_id) or None,
+        tried_urls=len(urls),
+    )
 
 
 @router.get("")
