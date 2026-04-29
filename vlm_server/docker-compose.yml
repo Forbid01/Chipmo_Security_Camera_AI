@@ -1,13 +1,3 @@
-# Compose file for self-hosting the VLM microservice on your own GPU
-# box. Run from the repo root:
-#
-#   VLM_API_KEY=$(openssl rand -hex 32) \
-#     docker-compose -f vlm_server/docker-compose.yml up -d
-#
-# Persist VLM_API_KEY somewhere safe — the same value goes into the
-# main app's Railway env vars so the two services authenticate to each
-# other. Rotating the key requires updating both places.
-
 version: "3.9"
 
 services:
