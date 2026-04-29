@@ -28,7 +28,8 @@ function Dashboard() {
   const [activeStore, setActiveStore] = useState(null);
   const [activeCamera, setActiveCamera] = useState(null);
   const [loadingStores, setLoadingStores] = useState(true);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [leftOpen, setLeftOpen] = useState(false);
+  const [rightOpen, setRightOpen] = useState(false);
   const [cameraStatuses, setCameraStatuses] = useState({});
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
   const [selectedAlert, setSelectedAlert] = useState(null);
@@ -231,7 +232,7 @@ function Dashboard() {
         onClick={() => {
           const mainElement = document.querySelector('main');
           if (mainElement) mainElement.scrollTo({ top: 0, behavior: 'smooth' });
-          setSidebarOpen(false);
+          setLeftOpen(false);
         }}
       >
         <div className="absolute inset-0 bg-red-600/5 blur-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
@@ -282,7 +283,7 @@ function Dashboard() {
                   setActiveStore(store.id);
                   const firstCam = cameras.find(c => c.store_id === store.id);
                   setActiveCamera(firstCam ? firstCam.id : null);
-                  setSidebarOpen(false);
+                  setLeftOpen(false);
                 }}
                 className={`w-full flex items-center gap-4 px-4 py-3.5 rounded-2xl transition-all duration-300 border ${
                   activeStore === store.id
@@ -309,7 +310,7 @@ function Dashboard() {
               return (
                 <button
                   key={cam.id}
-                  onClick={() => { setActiveCamera(cam.id); setSidebarOpen(false); }}
+                  onClick={() => { setActiveCamera(cam.id); setLeftOpen(false); }}
                   className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl transition-all border ${
                     activeCamera === cam.id
                       ? 'bg-emerald-500/10 border-emerald-500/40 text-emerald-400'
@@ -337,7 +338,7 @@ function Dashboard() {
           ].map(item => (
             <button
               key={item.path}
-              onClick={() => { navigate(item.path); setSidebarOpen(false); }}
+              onClick={() => { navigate(item.path); setLeftOpen(false); }}
               className="w-full flex items-center gap-4 px-4 py-3 rounded-xl text-slate-500 hover:bg-slate-800/40 transition-all font-bold"
             >
               <item.icon size={18} />
@@ -347,7 +348,7 @@ function Dashboard() {
 
           {userInfo.role === 'super_admin' && (
             <button
-              onClick={() => { navigate('/admin/control'); setSidebarOpen(false); }}
+              onClick={() => { navigate('/admin/control'); setLeftOpen(false); }}
               className="w-full flex items-center gap-4 px-4 py-3 rounded-xl text-red-400 border border-red-500/20 bg-red-500/5 hover:bg-red-500/10 hover:border-red-500/40 transition-all font-bold"
             >
               <ShieldCheck size={18} />
@@ -369,88 +370,265 @@ function Dashboard() {
   );
 
   return (
-    <div className="flex h-screen w-screen bg-[#05080d] text-slate-200 overflow-hidden font-sans relative">
-      {/* BACKGROUND */}
-      <div className="absolute inset-0 z-0 opacity-[0.03] pointer-events-none"
-           style={{ backgroundImage: `radial-gradient(#475569 1px, transparent 1px)`, backgroundSize: '30px 30px' }} />
+    <div className="relative w-screen h-screen overflow-hidden bg-black text-slate-200 font-sans">
 
-      {/* MOBILE OVERLAY */}
-      <AnimatePresence>
-        {sidebarOpen && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={() => setSidebarOpen(false)}
-            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[60] lg:hidden"
-          />
+      {/* ═══════════════════════════════════════════════════════════════
+          VIDEO BACKGROUND LAYER  z-0
+      ═══════════════════════════════════════════════════════════════ */}
+      <div className="absolute inset-0 z-0 bg-slate-950">
+        {loadingStores ? (
+          <div className="flex items-center justify-center w-full h-full">
+            <Loader2 size={32} className="animate-spin text-slate-700" />
+          </div>
+        ) : stores.length > 0 ? (
+          viewMode === 'single' ? (
+            VIDEO_FEED_URL ? (
+              <LiveStream
+                src={VIDEO_FEED_URL}
+                cameraId={activeCamera}
+                className="w-full h-full object-cover"
+              />
+            ) : (
+              <div className="flex flex-col items-center justify-center w-full h-full text-slate-700 gap-4">
+                <Camera size={64} />
+                <p className="text-xs font-mono uppercase tracking-widest">Камер сонгоно уу</p>
+              </div>
+            )
+          ) : (
+            <div className="w-full h-full">
+              <CameraGrid
+                cameras={storeCameras}
+                activeCamera={activeCamera}
+                camerasWithRecentAlerts={camerasWithRecentAlerts}
+                onCameraClick={(camId) => { setActiveCamera(camId); setViewMode('single'); }}
+              />
+            </div>
+          )
+        ) : (
+          <div className="absolute inset-0 opacity-[0.03]"
+            style={{ backgroundImage: `radial-gradient(#475569 1px, transparent 1px)`, backgroundSize: '30px 30px' }} />
         )}
-      </AnimatePresence>
+      </div>
 
-      {/* SIDEBAR — hidden on mobile, slide-in when open */}
-      <aside className={`
-    fixed lg:relative inset-y-0 left-0 z-[70]
-    w-72 bg-[#0f172a] lg:bg-[#0f172a]/90 border-r border-slate-800/50
-    flex flex-col
-    transform transition-transform duration-300 ease-in-out
-    ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
-  `}>
-    {/* Mobile close button */}
-    <button
-      onClick={() => setSidebarOpen(false)}
-      className="lg:hidden absolute top-4 right-4 p-2 rounded-lg text-slate-400 hover:text-white z-10"
-    >
-      <X size={20} />
-    </button>
-    
-    {renderSidebarContent()}
-    
-</aside>
+      {/* Edge vignette — aids sidebar readability */}
+      <div className="absolute inset-0 z-[1] pointer-events-none bg-gradient-to-r from-black/50 via-transparent to-black/50" />
 
-      {/* MAIN CONTENT */}
-      <main className="flex-1 overflow-y-auto relative z-10 p-4 md:p-6 lg:p-10 scrollbar-hide">
-        {/* Mobile top bar */}
-        <div className="flex items-center justify-between mb-4 lg:hidden">
-          <button
-            onClick={() => setSidebarOpen(true)}
-            className="p-2.5 rounded-xl border border-slate-800 hover:bg-slate-800/50 transition-all"
-          >
-            <Menu size={20} />
-          </button>
-          <h1 className="text-lg font-black tracking-tighter text-white uppercase">
-            CHIPMO<span className="text-red-600">.AI</span>
-          </h1>
+      {/* ═══════════════════════════════════════════════════════════════
+          LEFT TRIGGER ZONE  z-40  (20 px invisible hover strip)
+      ═══════════════════════════════════════════════════════════════ */}
+      <div
+        className="fixed left-0 inset-y-0 w-5 z-40"
+        onMouseEnter={() => setLeftOpen(true)}
+      />
+
+      {/* ═══════════════════════════════════════════════════════════════
+          LEFT SIDEBAR — Navigation  z-50
+      ═══════════════════════════════════════════════════════════════ */}
+      <motion.aside
+        className="fixed left-0 inset-y-0 w-72 z-50 flex flex-col
+                   bg-[#0a0f1e]/85 backdrop-blur-md
+                   border-r border-slate-700/40 shadow-2xl"
+        initial={{ x: '-100%' }}
+        animate={{ x: leftOpen ? '0%' : '-100%' }}
+        transition={{ duration: 0.3, ease: 'easeInOut' }}
+        onMouseLeave={() => setLeftOpen(false)}
+      >
+        {renderSidebarContent()}
+      </motion.aside>
+
+      {/* ═══════════════════════════════════════════════════════════════
+          RIGHT TRIGGER ZONE  z-40
+      ═══════════════════════════════════════════════════════════════ */}
+      <div
+        className="fixed right-0 inset-y-0 w-5 z-40"
+        onMouseEnter={() => setRightOpen(true)}
+      />
+
+      {/* ═══════════════════════════════════════════════════════════════
+          RIGHT SIDEBAR — Alert Feed  z-50
+      ═══════════════════════════════════════════════════════════════ */}
+      <motion.aside
+        className="fixed right-0 inset-y-0 w-80 z-50 flex flex-col
+                   bg-[#0a0f1e]/85 backdrop-blur-md
+                   border-l border-slate-700/40 shadow-2xl"
+        initial={{ x: '100%' }}
+        animate={{ x: rightOpen ? '0%' : '100%' }}
+        transition={{ duration: 0.3, ease: 'easeInOut' }}
+        onMouseLeave={() => setRightOpen(false)}
+      >
+        {/* Header */}
+        <div className="p-5 border-b border-slate-700/40 bg-slate-900/30 flex justify-between items-center shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-xl bg-amber-500/10 border border-amber-500/20">
+              <List size={16} className="text-amber-500" />
+            </div>
+            <div>
+              <h2 className="text-xs font-black uppercase tracking-widest text-slate-200">Сэрэмжлүүлэг</h2>
+              <p className="text-[10px] text-slate-500 font-mono">Тоо: {filteredAlerts.length}</p>
+            </div>
+          </div>
           <div className="flex items-center gap-2">
             <button
-              onClick={notificationsEnabled ? () => setNotificationsEnabled(false) : enableNotifications}
-              className={`p-2 rounded-lg border transition-all ${notificationsEnabled ? 'border-emerald-500/40 text-emerald-400' : 'border-slate-800 text-slate-500'}`}
-              title={notificationsEnabled ? 'Мэдэгдэл идэвхтэй' : 'Мэдэгдэл идэвхжүүлэх'}
+              onClick={exportCSV}
+              className="p-1.5 rounded-lg border border-slate-700/50 text-slate-500 hover:text-emerald-400 hover:border-emerald-500/30 transition-all"
+              title="CSV татах"
             >
-              {notificationsEnabled ? <Bell size={16} /> : <BellOff size={16} />}
+              <Download size={14} />
             </button>
+            {(selectedDay || selectedHour !== null) && (
+              <button
+                onClick={() => { setSelectedDay(null); setSelectedHour(null); }}
+                className="text-[9px] uppercase font-bold text-red-400 hover:text-red-300 transition-colors"
+              >
+                Арилгах
+              </button>
+            )}
           </div>
         </div>
 
-        <div className="max-w-[1600px] mx-auto w-full">
-          {/* Onboarding empty state */}
-          {!loadingStores && stores.length === 0 ? (
-            <motion.div
-              initial={{ opacity: 0, y: 30 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="flex flex-col items-center justify-center py-20 max-w-lg mx-auto text-center"
-            >
-              <div className="p-6 bg-blue-500/10 rounded-3xl border border-blue-500/20 mb-8">
+        {/* Alert list — scrollable */}
+        <div className="flex-1 overflow-y-auto p-4 space-y-3 scrollbar-hide">
+          <AnimatePresence mode="popLayout" initial={false}>
+            {filteredAlerts.length === 0 ? (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 0.3 }}
+                className="flex flex-col items-center justify-center py-20 text-slate-500 gap-4 font-mono text-center"
+              >
+                <Clock size={32} />
+                <p className="tracking-widest uppercase text-[10px]">Энэ хугацаанд зөрчил илрээгүй</p>
+              </motion.div>
+            ) : (
+              reversedAlerts.map((alert, index) => (
+                <motion.div
+                  key={alert.id || index}
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -20 }}
+                  layout
+                  onClick={() => setSelectedAlert(alert)}
+                  className="cursor-pointer"
+                >
+                  <AlertCard alert={alert} onSelect={setActiveVideo} />
+                </motion.div>
+              ))
+            )}
+          </AnimatePresence>
+        </div>
+
+        {/* Charts — pinned at bottom of right sidebar */}
+        <div className="shrink-0 border-t border-slate-700/40 p-3 space-y-3 bg-slate-900/20">
+          <WeeklyChart
+            data={chartData}
+            selectedDay={selectedDay}
+            onBarClick={(day) => { setSelectedDay(day); setSelectedHour(null); }}
+            onClearFilter={() => { setSelectedDay(null); setSelectedHour(null); }}
+          />
+          <HourlyChart
+            data={hourlyChartData}
+            selectedHour={selectedHour}
+            onHourClick={(hour) => setSelectedHour(hour)}
+            onClearHour={() => setSelectedHour(null)}
+          />
+        </div>
+      </motion.aside>
+
+      {/* ═══════════════════════════════════════════════════════════════
+          TOP FLOATING CONTROLS  z-50
+          Low opacity at rest → full opacity on hover
+      ═══════════════════════════════════════════════════════════════ */}
+      <motion.div
+        className="fixed top-4 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2"
+        initial={{ opacity: 0.25 }}
+        whileHover={{ opacity: 1 }}
+        transition={{ duration: 0.2 }}
+      >
+        {/* Active store name */}
+        <div className="px-4 py-2 rounded-full bg-black/60 backdrop-blur-md border border-slate-700/40 text-xs font-black uppercase tracking-tight text-white whitespace-nowrap">
+          {stores.find(s => s.id === activeStore)?.name || 'Chipmo.AI'}
+        </div>
+
+        {/* Single / Grid toggle */}
+        <div className="flex items-center rounded-full border border-slate-700/40 bg-black/60 backdrop-blur-md p-0.5">
+          <button
+            onClick={() => setViewMode('single')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-bold uppercase transition-all ${
+              viewMode === 'single' ? 'bg-blue-600 text-white shadow' : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <Maximize2 size={11} /> Single
+          </button>
+          <button
+            onClick={() => setViewMode('grid')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-bold uppercase transition-all ${
+              viewMode === 'grid' ? 'bg-blue-600 text-white shadow' : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <LayoutGrid size={11} /> Grid
+          </button>
+        </div>
+
+        {/* Live indicator */}
+        <div className="flex items-center gap-2 bg-black/60 backdrop-blur-md px-3 py-2 rounded-full border border-slate-700/40">
+          <div className="w-2 h-2 bg-red-500 rounded-full animate-ping" />
+          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">Live</span>
+        </div>
+
+        {/* Notification toggle */}
+        <button
+          onClick={notificationsEnabled ? () => setNotificationsEnabled(false) : enableNotifications}
+          title={notificationsEnabled ? 'Мэдэгдэл идэвхтэй' : 'Мэдэгдэл идэвхжүүлэх'}
+          className={`flex items-center gap-1.5 px-3 py-2 rounded-full border backdrop-blur-md bg-black/60 transition-all text-[10px] font-bold uppercase ${
+            notificationsEnabled
+              ? 'border-emerald-500/40 text-emerald-400'
+              : 'border-slate-700/40 text-slate-500 hover:text-slate-300'
+          }`}
+        >
+          {notificationsEnabled ? <Bell size={12} /> : <BellOff size={12} />}
+        </button>
+      </motion.div>
+
+      {/* ═══════════════════════════════════════════════════════════════
+          MOBILE FALLBACK tap buttons (hidden on lg+)
+      ═══════════════════════════════════════════════════════════════ */}
+      <div className="fixed top-4 left-4 z-50 lg:hidden">
+        <button
+          onClick={() => setLeftOpen(v => !v)}
+          className="p-2.5 rounded-xl bg-black/60 backdrop-blur-md border border-slate-700/40 text-white"
+        >
+          <Menu size={18} />
+        </button>
+      </div>
+      <div className="fixed top-4 right-4 z-50 lg:hidden">
+        <button
+          onClick={() => setRightOpen(v => !v)}
+          className="p-2.5 rounded-xl bg-black/60 backdrop-blur-md border border-slate-700/40 text-white"
+        >
+          <Bell size={18} />
+        </button>
+      </div>
+
+      {/* ═══════════════════════════════════════════════════════════════
+          ONBOARDING OVERLAY  z-30  (no stores yet)
+      ═══════════════════════════════════════════════════════════════ */}
+      <AnimatePresence>
+        {!loadingStores && stores.length === 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 30 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0 }}
+            className="absolute inset-0 z-30 flex flex-col items-center justify-center p-6 bg-black/75 backdrop-blur-sm"
+          >
+            <div className="max-w-lg w-full text-center">
+              <div className="p-6 bg-blue-500/10 rounded-3xl border border-blue-500/20 mb-8 inline-block">
                 <ShieldCheck size={48} className="text-blue-400" />
               </div>
               <h2 className="text-2xl font-black text-white uppercase mb-3">Тавтай морил!</h2>
               <p className="text-slate-400 text-sm mb-10 leading-relaxed">
                 Chipmo AI ашиглаж эхлэхийн тулд эхлээд дэлгүүрээ бүртгэж, дараа нь камераа холбоно уу.
               </p>
-              <div className="space-y-4 w-full">
-                <button
-                  onClick={() => navigate('/stores')}
-                  className="w-full flex items-center justify-between px-6 py-4 rounded-2xl bg-blue-600/10 border border-blue-500/30 text-blue-400 hover:bg-blue-600/20 transition-all group"
-                >
+              <div className="space-y-4">
+                <button onClick={() => navigate('/stores')} className="w-full flex items-center justify-between px-6 py-4 rounded-2xl bg-blue-600/10 border border-blue-500/30 text-blue-400 hover:bg-blue-600/20 transition-all group">
                   <div className="flex items-center gap-4">
                     <div className="p-2 rounded-xl bg-blue-500/20"><Store size={20} /></div>
                     <div className="text-left">
@@ -460,10 +638,7 @@ function Dashboard() {
                   </div>
                   <ArrowRight size={16} className="group-hover:translate-x-1 transition-transform" />
                 </button>
-                <button
-                  onClick={() => navigate('/cameras')}
-                  className="w-full flex items-center justify-between px-6 py-4 rounded-2xl bg-slate-800/30 border border-slate-700/30 text-slate-400 hover:bg-slate-800/50 transition-all group"
-                >
+                <button onClick={() => navigate('/cameras')} className="w-full flex items-center justify-between px-6 py-4 rounded-2xl bg-slate-800/30 border border-slate-700/30 text-slate-400 hover:bg-slate-800/50 transition-all group">
                   <div className="flex items-center gap-4">
                     <div className="p-2 rounded-xl bg-slate-700/30"><Camera size={20} /></div>
                     <div className="text-left">
@@ -473,10 +648,7 @@ function Dashboard() {
                   </div>
                   <ArrowRight size={16} className="group-hover:translate-x-1 transition-transform" />
                 </button>
-                <button
-                  onClick={() => navigate('/settings')}
-                  className="w-full flex items-center justify-between px-6 py-4 rounded-2xl bg-slate-800/30 border border-slate-700/30 text-slate-400 hover:bg-slate-800/50 transition-all group"
-                >
+                <button onClick={() => navigate('/settings')} className="w-full flex items-center justify-between px-6 py-4 rounded-2xl bg-slate-800/30 border border-slate-700/30 text-slate-400 hover:bg-slate-800/50 transition-all group">
                   <div className="flex items-center gap-4">
                     <div className="p-2 rounded-xl bg-slate-700/30"><Bell size={20} /></div>
                     <div className="text-left">
@@ -487,188 +659,10 @@ function Dashboard() {
                   <ArrowRight size={16} className="group-hover:translate-x-1 transition-transform" />
                 </button>
               </div>
-            </motion.div>
-          ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8">
-            {/* Left: Video & Analytics */}
-            <div className="lg:col-span-8 space-y-6 lg:space-y-8">
-              <div className="flex justify-between items-end px-2">
-                <div>
-                  <h2 className="text-2xl lg:text-3xl font-black text-white uppercase tracking-tight italic">
-                    {stores.find(s => s.id === activeStore)?.name || 'Дэлгүүр сонгоно уу'}
-                  </h2>
-                  <p className="text-xs font-mono text-blue-500/80 uppercase tracking-widest mt-1">
-                    {storeCameras.find(c => c.id === activeCamera)?.name || 'Камер сонгогдоогүй'}
-                  </p>
-                </div>
-                <div className="hidden md:flex items-center gap-3">
-                  {/* Single / Grid view toggle */}
-                  <div className="flex items-center rounded-full border border-slate-800 bg-slate-900/50 p-0.5">
-                    <button
-                      onClick={() => setViewMode('single')}
-                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-bold uppercase transition-all ${
-                        viewMode === 'single'
-                          ? 'bg-blue-600 text-white shadow'
-                          : 'text-slate-500 hover:text-slate-300'
-                      }`}
-                    >
-                      <Maximize2 size={11} /> Single
-                    </button>
-                    <button
-                      onClick={() => setViewMode('grid')}
-                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-bold uppercase transition-all ${
-                        viewMode === 'grid'
-                          ? 'bg-blue-600 text-white shadow'
-                          : 'text-slate-500 hover:text-slate-300'
-                      }`}
-                    >
-                      <LayoutGrid size={11} /> Grid
-                    </button>
-                  </div>
-
-                  {/* Notification toggle (desktop) */}
-                  <button
-                    onClick={notificationsEnabled ? () => setNotificationsEnabled(false) : enableNotifications}
-                    className={`flex items-center gap-2 px-3 py-2 rounded-full border transition-all text-[10px] font-bold uppercase ${
-                      notificationsEnabled
-                        ? 'border-emerald-500/40 text-emerald-400 bg-emerald-500/5'
-                        : 'border-slate-800 text-slate-500 hover:text-slate-300'
-                    }`}
-                  >
-                    {notificationsEnabled ? <Bell size={12} /> : <BellOff size={12} />}
-                    {notificationsEnabled ? 'Мэдэгдэл ON' : 'Мэдэгдэл'}
-                  </button>
-                  <div className="flex items-center gap-2 bg-slate-900/50 px-4 py-2 rounded-full border border-slate-800">
-                    <div className="w-2 h-2 bg-red-500 rounded-full animate-ping" />
-                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">Систем идэвхтэй</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* LIVE FEED — single or grid */}
-              <div className="bg-black rounded-2xl lg:rounded-[3rem] border border-slate-800/50 overflow-hidden shadow-2xl relative ring-1 ring-white/5">
-                <div className="p-3 lg:p-5 bg-slate-900/40 border-b border-slate-800/50 flex justify-between items-center font-mono">
-                  <span className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-blue-400">
-                    <Activity size={14} className="animate-pulse" />
-                    {viewMode === 'single'
-                      ? (storeCameras.find(c => c.id === activeCamera)?.name || 'Камер')
-                      : `${storeCameras.length} камер — Grid`}
-                  </span>
-                  <div className="flex items-center gap-2">
-                    {/* Mobile toggle */}
-                    <div className="flex md:hidden items-center rounded-full border border-slate-700 bg-slate-900 p-0.5">
-                      <button
-                        onClick={() => setViewMode('single')}
-                        className={`p-1.5 rounded-full transition-all ${viewMode === 'single' ? 'bg-blue-600 text-white' : 'text-slate-500'}`}
-                      >
-                        <Maximize2 size={10} />
-                      </button>
-                      <button
-                        onClick={() => setViewMode('grid')}
-                        className={`p-1.5 rounded-full transition-all ${viewMode === 'grid' ? 'bg-blue-600 text-white' : 'text-slate-500'}`}
-                      >
-                        <LayoutGrid size={10} />
-                      </button>
-                    </div>
-                    <span className="bg-red-600 text-[9px] px-3 py-1 rounded-full text-white font-bold animate-pulse uppercase">Live</span>
-                  </div>
-                </div>
-
-                {viewMode === 'single' ? (
-                  <div className="w-full relative aspect-video flex items-center justify-center bg-slate-950">
-                    {VIDEO_FEED_URL ? (
-                      <LiveStream src={VIDEO_FEED_URL} cameraId={activeCamera} />
-                    ) : (
-                      <div className="flex flex-col items-center gap-4 text-slate-600">
-                        <Camera size={48} />
-                        <p className="text-xs font-mono uppercase tracking-widest">Камер сонгоно уу</p>
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <CameraGrid
-                    cameras={storeCameras}
-                    activeCamera={activeCamera}
-                    camerasWithRecentAlerts={camerasWithRecentAlerts}
-                    onCameraClick={(camId) => {
-                      setActiveCamera(camId);
-                      setViewMode('single');
-                    }}
-                  />
-                )}
-              </div>
-
-              {/* CHARTS */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 lg:gap-6">
-                <WeeklyChart
-                  data={chartData}
-                  selectedDay={selectedDay}
-                  onBarClick={(day) => { setSelectedDay(day); setSelectedHour(null); }}
-                  onClearFilter={() => { setSelectedDay(null); setSelectedHour(null); }}
-                />
-                <HourlyChart
-                  data={hourlyChartData}
-                  selectedHour={selectedHour}
-                  onHourClick={(hour) => setSelectedHour(hour)}
-                  onClearHour={() => setSelectedHour(null)}
-                />
-              </div>
             </div>
-
-            {/* Right: Logs */}
-            <div className="lg:col-span-4">
-              <div className="bg-[#0f172a]/90 rounded-2xl lg:rounded-[2.5rem] border border-slate-800/50 flex flex-col h-[500px] lg:h-[calc(100vh-140px)] shadow-2xl overflow-hidden ring-1 ring-white/5">
-                <div className="p-5 lg:p-8 border-b border-slate-800 bg-slate-900/40 flex justify-between items-center">
-                  <div className="flex items-center gap-3">
-                    <List size={20} className="text-amber-500" />
-                    <div>
-                      <h2 className="text-xs font-black uppercase tracking-widest text-slate-200">Сэрэмжлүүлэг</h2>
-                      <p className="text-[10px] text-slate-500 font-mono">Тоо: {filteredAlerts.length}</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {/* CSV Export */}
-                    <button
-                      onClick={exportCSV}
-                      className="p-1.5 rounded-lg border border-slate-800 text-slate-500 hover:text-emerald-400 hover:border-emerald-500/30 transition-all"
-                      title="CSV татах"
-                    >
-                      <Download size={14} />
-                    </button>
-                    {(selectedDay || selectedHour !== null) && (
-                      <button onClick={() => { setSelectedDay(null); setSelectedHour(null); }}
-                              className="text-[9px] uppercase font-bold text-red-400 hover:text-red-300 transition-colors">
-                        Арилгах
-                      </button>
-                    )}
-                  </div>
-                </div>
-
-                <div className="flex-1 overflow-y-auto p-4 lg:p-6 space-y-4 scrollbar-hide">
-                  <AnimatePresence mode="popLayout" initial={false}>
-                    {filteredAlerts.length === 0 ? (
-                      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 0.3 }} className="flex flex-col items-center justify-center py-20 text-slate-500 gap-4 font-mono text-center">
-                        <Clock size={32} />
-                        <p className="tracking-widest uppercase text-[10px]">Энэ хугацаанд зөрчил илрээгүй</p>
-                      </motion.div>
-                    ) : (
-                      reversedAlerts.map((alert, index) => (
-                        <motion.div key={alert.id || index} initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} layout
-                          onClick={() => setSelectedAlert(alert)}
-                          className="cursor-pointer"
-                        >
-                          <AlertCard alert={alert} onSelect={setActiveVideo} />
-                        </motion.div>
-                      ))
-                    )}
-                  </AnimatePresence>
-                </div>
-              </div>
-            </div>
-          </div>
-          )}
-        </div>
-      </main>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <VideoModal videoUrl={activeVideo} onClose={() => setActiveVideo(null)} />
       <AlertDetailModal alert={selectedAlert} onClose={() => setSelectedAlert(null)} onPlayVideo={setActiveVideo} />
