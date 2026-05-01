@@ -176,8 +176,14 @@ def _enrich_manufacturer(ip: str, extras: dict[str, Any]) -> tuple[str | None, s
 
     hardware = extras.get("hardware") or extras.get("name")
     if rtsp_patterns is not None and mfg_id is None and hardware:
+        hw_lower = hardware.lower()
+        # Use scope_keywords list from catalog (falls back to display_name first
+        # word for older catalog entries that predate the keywords field).
         for entry in rtsp_patterns.list_manufacturers():
-            if entry["display_name"].lower().split()[0] in hardware.lower():
+            keywords = entry.get("scope_keywords") or [
+                entry["display_name"].lower().split()[0]
+            ]
+            if any(kw in hw_lower for kw in keywords):
                 mfg_id = entry["id"]
                 mfg_display = entry["display_name"]
                 break

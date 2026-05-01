@@ -1,16 +1,21 @@
 from __future__ import annotations
 
+import asyncio
+import json
 import os
 from typing import Annotated
 
+from app.core.alert_broadcaster import alert_broadcaster
 from app.core.config import ALERTS_DIR
-from app.core.security import CurrentUser, SuperAdmin
+from app.core.security import BearerToken, CurrentUser, SuperAdmin, _decode_token, _extract_token
 from app.core.tenancy import require_alert_access
 from app.db.models.vlm_annotation import VlmAnnotation
 from app.db.repository.alerts import AlertRepository
+from app.db.repository.stores import StoreRepository
 from app.db.session import DB
 from app.schemas.common import APIResponse
 from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 
 router = APIRouter()
@@ -54,6 +59,76 @@ async def get_alerts(
         )
 
     return {"status": "success", "data": alerts}
+
+
+@router.get("/stream")
+async def stream_alerts_sse(
+    request: Request,
+    db: DB,
+    token: str | None = None,
+    bearer_token: BearerToken = None,
+):
+    """Server-Sent Events stream for real-time alert delivery.
+
+    Authentication: accepts a JWT via `?token=` query param (required for
+    browser EventSource which cannot set custom headers) or the standard
+    httpOnly cookie / Authorization header.
+
+    Each connected client receives only alerts that belong to their
+    organisation.  Super-admins receive all alerts.
+    """
+    raw_token = token or _extract_token(request, bearer_token)
+    if not raw_token:
+        raise HTTPException(status_code=401, detail="Нэвтрэх шаардлагатай")
+    try:
+        user = _decode_token(raw_token)
+    except HTTPException:
+        raise
+
+    org_id = user.get("org_id")
+    role = user.get("role")
+
+    # Determine which store_ids this user may see (resolved once at connect).
+    if role == "super_admin":
+        allowed_store_ids = None  # None → all stores
+    else:
+        store_rows = await StoreRepository(db).get_by_organization(org_id)
+        allowed_store_ids: set[int] = {int(s["id"]) for s in store_rows}
+
+    async def event_generator():
+        q = await alert_broadcaster.subscribe()
+        try:
+            # Signal to the client that the stream is open.
+            yield "event: connected\ndata: {}\n\n"
+
+            while True:
+                if await request.is_disconnected():
+                    break
+                try:
+                    payload = await asyncio.wait_for(q.get(), timeout=20.0)
+
+                    # Tenant filter: drop events that don't belong to this user.
+                    sid = payload.get("store_id")
+                    if allowed_store_ids is not None:
+                        if sid is None or int(sid) not in allowed_store_ids:
+                            continue
+
+                    yield f"event: alert\ndata: {json.dumps(payload)}\n\n"
+                except asyncio.TimeoutError:
+                    # Keepalive comment — prevents proxies from closing idle streams.
+                    yield ": keepalive\n\n"
+        finally:
+            await alert_broadcaster.unsubscribe(q)
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
+    )
 
 
 @router.get("/admin")

@@ -1,3 +1,5 @@
+import asyncio
+
 from app.core.security import AdminOrAbove, CurrentUser, SuperAdmin
 from app.core.tenant_auth import CurrentTenant
 from app.db.repository.camera_repo import CameraRepository
@@ -13,9 +15,16 @@ from app.schemas.camera import (
     ShelfZonesUpdate,
 )
 from app.schemas.common import APIResponse
-from app.services.camera_test import test_camera as run_camera_test
+from app.services.camera_test import test_camera as _run_camera_test_sync
 from app.services.onboarding_events import CAMERA_TESTED, broker, make_event
 from fastapi import APIRouter, HTTPException
+
+
+async def _test_camera(url: str, manufacturer_id: str | None = None):
+    """Run the blocking OpenCV probe in a thread so the event loop is free."""
+    return await asyncio.to_thread(
+        _run_camera_test_sync, url, manufacturer_id=manufacturer_id
+    )
 
 router = APIRouter()
 
@@ -37,7 +46,7 @@ async def test_camera_connection(
     The endpoint is tenant-authenticated but does not persist
     anything — test payloads are transient.
     """
-    result = run_camera_test(
+    result = await _test_camera(
         str(payload.url),
         manufacturer_id=payload.manufacturer_id,
     )
@@ -106,7 +115,7 @@ async def probe_camera(
 
     last_result = None
     for i, url in enumerate(urls):
-        result = run_camera_test(url, manufacturer_id=payload.manufacturer_id)
+        result = await _test_camera(url, manufacturer_id=payload.manufacturer_id)
         last_result = result
         if result.ok:
             return CameraProbeResponse(
@@ -121,13 +130,15 @@ async def probe_camera(
                 tried_urls=i + 1,
             )
 
-    # All candidates failed
+    # All candidates failed — surface the last error_category so the UI
+    # can show "wrong password" vs "wrong IP" guidance.
     d = last_result.to_dict() if last_result else {}
     return CameraProbeResponse(
         ok=False,
         message=d.get("message", "Бүх URL туршиж үзсэн боловч холбогдсонгүй."),
         credential_hints=d.get("credential_hints") or credential_hints(payload.manufacturer_id) or None,
         tried_urls=len(urls),
+        error_category=d.get("error_category"),
     )
 
 

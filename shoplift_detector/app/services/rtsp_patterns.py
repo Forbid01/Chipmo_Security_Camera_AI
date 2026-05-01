@@ -58,6 +58,7 @@ def list_manufacturers() -> list[dict[str, Any]]:
             "display_name": m["display_name"],
             "oui_prefixes": list(m.get("oui_prefixes", [])),
             "default_port": int(m.get("default_port", 554)),
+            "scope_keywords": list(m.get("scope_keywords", [])),
         }
         for m in catalog["manufacturers"]
     ]

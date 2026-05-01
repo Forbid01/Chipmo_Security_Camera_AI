@@ -277,6 +277,20 @@ class ShopliftDetector:
                     suppressed=pipeline_decision.suppressed,
                     suppressed_reason=pipeline_decision.suppressed_reason,
                 )
+
+                # Nudge SSE clients so dashboards update without polling.
+                if alert_id is not None:
+                    try:
+                        from app.core.alert_broadcaster import alert_broadcaster
+                        await alert_broadcaster.publish({
+                            "type": "new_alert",
+                            "alert_id": alert_id,
+                            "store_id": store_id,
+                            "camera_id": camera_id,
+                        })
+                    except Exception:
+                        pass  # SSE is non-critical
+
                 if alert_id is None:
                     logger.warning(
                         "Alert insert returned None after dedup approved; "

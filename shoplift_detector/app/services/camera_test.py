@@ -47,6 +47,11 @@ class CameraTestResult:
     fps: float | None = None
     latency_ms: float | None = None
     credential_hints: list[dict[str, Any]] | None = None
+    # Machine-readable failure reason so the UI can show specific guidance.
+    # "network"  — camera not reachable at all (wrong IP/port/URL path).
+    # "auth"     — connection opened but no frames (bad credentials or codec).
+    # "encode"   — frame grabbed but JPEG encoding failed.
+    error_category: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -58,6 +63,7 @@ class CameraTestResult:
             "fps": self.fps,
             "latency_ms": self.latency_ms,
             "credential_hints": self.credential_hints,
+            "error_category": self.error_category,
         }
 
 
@@ -112,23 +118,26 @@ def test_camera(
     except Exception as exc:  # noqa: BLE001
         logger.warning("camera_test_open_failed", extra={"url": _redact(url), "err": str(exc)})
         return _fail(
-            "Камер нээгдэхгүй байна — URL эсвэл сүлжээгээ шалгана уу.",
+            "Холбогдож чадсангүй — IP хаяг, порт эсвэл URL зам буруу байж болно.",
             manufacturer_id,
+            error_category="network",
         )
 
     try:
         if not cap.isOpened():
             return _fail(
-                "Камер дээр холбогдсон боловч stream нээгдсэнгүй.",
+                "Холбогдож чадсангүй — IP хаяг, порт эсвэл URL зам буруу байж болно.",
                 manufacturer_id,
+                error_category="network",
             )
 
         ok, frame = cap.read()
         if not ok or frame is None:
             return _fail(
-                "Холболт амжилттай, гэхдээ frame уншихгүй байна "
-                "(authentication эсвэл codec тохирохгүй байх магадлалтай).",
+                "Холболт нээгдсэн боловч stream ирсэнгүй — "
+                "нэвтрэх нэр/нууц үг буруу эсвэл codec тохирохгүй байна.",
                 manufacturer_id,
+                error_category="auth",
             )
 
         # Thumbnail shrink — big frames bloat JSON and slow the UI.
@@ -145,8 +154,9 @@ def test_camera(
         except Exception as exc:  # noqa: BLE001
             logger.warning("camera_test_encode_failed", extra={"err": str(exc)})
             return _fail(
-                "Frame JPEG болгож кодлох үед алдаа гарлаа.",
+                "Frame уншигдсан боловч JPEG кодлоход алдаа гарлаа.",
                 manufacturer_id,
+                error_category="encode",
             )
 
         fps = _estimate_fps(cap, window_s=fps_window_s, clock=clock)
@@ -172,11 +182,17 @@ def test_camera(
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _fail(message: str, manufacturer_id: str | None) -> CameraTestResult:
+def _fail(
+    message: str,
+    manufacturer_id: str | None,
+    *,
+    error_category: str | None = None,
+) -> CameraTestResult:
     return CameraTestResult(
         ok=False,
         message=message,
         credential_hints=_hints_for(manufacturer_id),
+        error_category=error_category,
     )
 
 

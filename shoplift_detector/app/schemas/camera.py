@@ -57,6 +57,7 @@ class CameraTestResponse(BaseModel):
     fps: float | None = None
     latency_ms: float | None = None
     credential_hints: list[dict[str, Any]] | None = None
+    error_category: str | None = None  # "network" | "auth" | "encode" | None
 
 
 class CameraCreate(BaseModel):
@@ -138,3 +139,4 @@ class CameraProbeResponse(BaseModel):
     latency_ms: float | None = None
     credential_hints: list[dict[str, Any]] | None = None
     tried_urls: int = 0             # how many candidates were attempted
+    error_category: str | None = None  # from the last failed attempt

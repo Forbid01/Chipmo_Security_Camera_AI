@@ -1,6 +1,6 @@
 {
   "$schema": "rtsp_patterns.schema",
-  "version": 1,
+  "version": 2,
   "notes": [
     "Per-manufacturer RTSP URL templates + default credential hints.",
     "Placeholders: {user}, {password}, {ip}, {port}, {channel}, {stream}.",
@@ -12,119 +12,274 @@
     {
       "id": "hikvision",
       "display_name": "Hikvision",
-      "oui_prefixes": ["4C:BD:8F", "28:57:BE", "BC:AD:28", "C0:51:7E", "C4:2F:90"],
+      "scope_keywords": ["hikvision", "hikam", "hik"],
+      "oui_prefixes": [
+        "4C:BD:8F", "28:57:BE", "BC:AD:28", "C0:51:7E", "C4:2F:90",
+        "44:19:B6", "48:EA:63", "54:C4:15", "A4:14:37", "D8:0D:17",
+        "18:68:CB", "E0:24:81"
+      ],
       "default_port": 554,
       "credential_hints": [
-        { "username": "admin", "password": "12345", "note": "Old factory default before 2016." },
-        { "username": "admin", "password": "admin",  "note": "Some OEM rebrands." }
+        { "username": "admin", "password": "12345",   "note": "Old factory default before 2016." },
+        { "username": "admin", "password": "admin12345", "note": "Common OEM default." },
+        { "username": "admin", "password": "admin",   "note": "Some OEM rebrands." }
       ],
       "patterns": [
         {
-          "template": "rtsp://{user}:{password}@{ip}:{port}/Streaming/Channels/{channel}0{stream_digit}",
+          "template": "rtsp://{user}:{password}@{ip}:{port}/Streaming/Channels/{channel}01",
           "score": 100,
-          "variables": { "channel": "1", "stream_digit": "1" },
-          "description": "Modern H.264/H.265 ISAPI path (firmware 5.x+)."
+          "variables": { "channel": "1" },
+          "description": "Modern ISAPI main stream (firmware 5.x+)."
+        },
+        {
+          "template": "rtsp://{user}:{password}@{ip}:{port}/Streaming/Channels/{channel}02",
+          "score": 90,
+          "variables": { "channel": "1" },
+          "description": "Modern ISAPI sub stream."
         },
         {
           "template": "rtsp://{user}:{password}@{ip}:{port}/h264/ch{channel}/main/av_stream",
           "score": 60,
           "variables": { "channel": "1" },
-          "description": "Legacy firmware path (pre-5.x)."
+          "description": "Legacy firmware main stream (pre-5.x)."
+        },
+        {
+          "template": "rtsp://{user}:{password}@{ip}:{port}/h264/ch{channel}/sub/av_stream",
+          "score": 50,
+          "variables": { "channel": "1" },
+          "description": "Legacy firmware sub stream."
         }
       ]
     },
     {
       "id": "dahua",
       "display_name": "Dahua",
-      "oui_prefixes": ["3C:EF:8C", "90:02:A9", "4C:11:BF", "A0:BD:1D"],
+      "scope_keywords": ["dahua", "dh-"],
+      "oui_prefixes": [
+        "3C:EF:8C", "90:02:A9", "4C:11:BF", "A0:BD:1D",
+        "BC:32:B2", "E0:50:8B", "30:0D:9E"
+      ],
       "default_port": 554,
       "credential_hints": [
-        { "username": "admin", "password": "admin", "note": "Factory default; web UI forces change on first login." }
+        { "username": "admin", "password": "admin",  "note": "Factory default; web UI forces change on first login." },
+        { "username": "admin", "password": "Admin@123", "note": "Some newer Dahua firmware." }
       ],
       "patterns": [
         {
-          "template": "rtsp://{user}:{password}@{ip}:{port}/cam/realmonitor?channel={channel}&subtype={stream}",
+          "template": "rtsp://{user}:{password}@{ip}:{port}/cam/realmonitor?channel={channel}&subtype=0",
           "score": 100,
-          "variables": { "channel": "1", "stream": "0" },
-          "description": "Standard Dahua RTSP path (subtype=0 main, 1 sub)."
+          "variables": { "channel": "1" },
+          "description": "Standard Dahua main stream."
+        },
+        {
+          "template": "rtsp://{user}:{password}@{ip}:{port}/cam/realmonitor?channel={channel}&subtype=1",
+          "score": 90,
+          "variables": { "channel": "1" },
+          "description": "Standard Dahua sub stream."
+        },
+        {
+          "template": "rtsp://{user}:{password}@{ip}:{port}/h264/ch{channel}/main/",
+          "score": 50,
+          "variables": { "channel": "01" },
+          "description": "Legacy Dahua path."
         }
       ]
     },
     {
       "id": "axis",
       "display_name": "Axis Communications",
-      "oui_prefixes": ["00:40:8C", "AC:CC:8E", "B8:A4:4F"],
+      "scope_keywords": ["axis"],
+      "oui_prefixes": ["00:40:8C", "AC:CC:8E", "B8:A4:4F", "00:A0:EB"],
       "default_port": 554,
       "credential_hints": [
         { "username": "root",  "password": "pass",  "note": "Very old firmware default." },
-        { "username": "admin", "password": "",       "note": "Modern Axis ships unprovisioned — you set the password on first web login." }
+        { "username": "admin", "password": "",       "note": "Modern Axis ships unprovisioned — set password on first web login." }
       ],
       "patterns": [
         {
           "template": "rtsp://{user}:{password}@{ip}:{port}/axis-media/media.amp?streamprofile=main",
           "score": 100,
-          "description": "Axis VAPIX RTSP with named profile."
+          "description": "Axis VAPIX with named profile."
         },
         {
           "template": "rtsp://{user}:{password}@{ip}:{port}/axis-media/media.amp",
           "score": 80,
-          "description": "Axis default profile (matches camera's configured stream)."
+          "description": "Axis default (camera's configured stream)."
+        },
+        {
+          "template": "rtsp://{user}:{password}@{ip}:{port}/axis-media/media.amp?resolution=640x480",
+          "score": 60,
+          "description": "Axis sub/low-res stream."
         }
       ]
     },
     {
       "id": "uniview",
       "display_name": "Uniview (UNV)",
-      "oui_prefixes": ["E0:B6:F5", "4C:72:B9"],
+      "scope_keywords": ["uniview", "unv", "zhejiang uniview"],
+      "oui_prefixes": ["E0:B6:F5", "4C:72:B9", "38:22:9A"],
       "default_port": 554,
       "credential_hints": [
         { "username": "admin", "password": "123456", "note": "Uniview factory default." }
       ],
       "patterns": [
         {
-          "template": "rtsp://{user}:{password}@{ip}:{port}/media/video{stream_digit}",
+          "template": "rtsp://{user}:{password}@{ip}:{port}/media/video1",
           "score": 100,
-          "variables": { "stream_digit": "1" },
-          "description": "Uniview main/sub stream (1=main, 2=sub)."
+          "description": "Uniview main stream."
+        },
+        {
+          "template": "rtsp://{user}:{password}@{ip}:{port}/media/video2",
+          "score": 90,
+          "description": "Uniview sub stream."
         }
       ]
     },
     {
       "id": "tplink",
       "display_name": "TP-Link / Tapo / VIGI",
-      "oui_prefixes": ["98:DA:C4", "B0:BE:76", "50:C7:BF"],
+      "scope_keywords": ["tapo", "vigi", "tp-link", "tplink"],
+      "oui_prefixes": ["98:DA:C4", "B0:BE:76", "50:C7:BF", "60:32:B1", "F0:9F:C2"],
       "default_port": 554,
       "credential_hints": [
-        { "username": "admin", "password": "",       "note": "VIGI line — admin with the password you set during phone-app pairing." }
+        { "username": "admin", "password": "",  "note": "VIGI/Tapo — use the password set during phone-app pairing." }
       ],
       "patterns": [
         {
-          "template": "rtsp://{user}:{password}@{ip}:{port}/stream{stream_digit}",
+          "template": "rtsp://{user}:{password}@{ip}:{port}/stream1",
+          "score": 100,
+          "description": "Tapo/VIGI main stream."
+        },
+        {
+          "template": "rtsp://{user}:{password}@{ip}:{port}/stream2",
+          "score": 90,
+          "description": "Tapo/VIGI sub stream."
+        }
+      ]
+    },
+    {
+      "id": "reolink",
+      "display_name": "Reolink",
+      "scope_keywords": ["reolink"],
+      "oui_prefixes": ["EC:71:DB", "D4:E4:57", "72:53:54"],
+      "default_port": 554,
+      "credential_hints": [
+        { "username": "admin", "password": "",      "note": "Reolink ships with empty password — set on first app login." },
+        { "username": "admin", "password": "admin", "note": "Some older Reolink models." }
+      ],
+      "patterns": [
+        {
+          "template": "rtsp://{user}:{password}@{ip}:{port}/h264Preview_01_main",
+          "score": 100,
+          "description": "Reolink main stream (most models)."
+        },
+        {
+          "template": "rtsp://{user}:{password}@{ip}:{port}/h264Preview_01_sub",
+          "score": 90,
+          "description": "Reolink sub stream."
+        },
+        {
+          "template": "rtsp://{user}:{password}@{ip}:{port}/h265Preview_01_main",
+          "score": 80,
+          "description": "Reolink H.265 main stream (RLC-8xx series)."
+        }
+      ]
+    },
+    {
+      "id": "hanwha",
+      "display_name": "Hanwha / Wisenet",
+      "scope_keywords": ["hanwha", "wisenet", "samsung techwin", "qnv", "xnv"],
+      "oui_prefixes": ["00:09:18", "34:E7:0B", "00:00:F0"],
+      "default_port": 554,
+      "credential_hints": [
+        { "username": "admin", "password": "4321",  "note": "Older Samsung Techwin models." },
+        { "username": "admin", "password": "admin", "note": "Hanwha Wisenet factory default." }
+      ],
+      "patterns": [
+        {
+          "template": "rtsp://{user}:{password}@{ip}:{port}/profile{stream_digit}/media.smp",
           "score": 100,
           "variables": { "stream_digit": "1" },
-          "description": "Tapo/VIGI default stream path."
+          "description": "Hanwha Wisenet Profile S main stream."
+        },
+        {
+          "template": "rtsp://{user}:{password}@{ip}:{port}/profile{stream_digit}/media.smp",
+          "score": 90,
+          "variables": { "stream_digit": "2" },
+          "description": "Hanwha Wisenet Profile S sub stream."
+        }
+      ]
+    },
+    {
+      "id": "amcrest",
+      "display_name": "Amcrest",
+      "scope_keywords": ["amcrest"],
+      "oui_prefixes": ["98:F1:9D", "3C:EF:8C"],
+      "default_port": 554,
+      "credential_hints": [
+        { "username": "admin", "password": "admin", "note": "Amcrest (Dahua OEM) factory default." }
+      ],
+      "patterns": [
+        {
+          "template": "rtsp://{user}:{password}@{ip}:{port}/cam/realmonitor?channel={channel}&subtype=0",
+          "score": 100,
+          "variables": { "channel": "1" },
+          "description": "Amcrest main stream (Dahua-compatible)."
+        },
+        {
+          "template": "rtsp://{user}:{password}@{ip}:{port}/cam/realmonitor?channel={channel}&subtype=1",
+          "score": 90,
+          "variables": { "channel": "1" },
+          "description": "Amcrest sub stream."
         }
       ]
     },
     {
       "id": "generic",
       "display_name": "Generic / Unknown ONVIF",
+      "scope_keywords": [],
       "oui_prefixes": [],
       "default_port": 554,
       "credential_hints": [
         { "username": "admin", "password": "admin", "note": "Universal first guess." },
-        { "username": "admin", "password": "",       "note": "Empty-password cameras still exist in the wild." }
+        { "username": "admin", "password": "",      "note": "Empty-password cameras still exist." },
+        { "username": "admin", "password": "12345", "note": "Common low-cost camera default." }
       ],
       "patterns": [
         {
           "template": "rtsp://{user}:{password}@{ip}:{port}/onvif/profile1",
-          "score": 50,
-          "description": "ONVIF Profile S common transport URI."
+          "score": 70,
+          "description": "ONVIF Profile S standard URI."
+        },
+        {
+          "template": "rtsp://{user}:{password}@{ip}:{port}/onvif1",
+          "score": 65,
+          "description": "Shortened ONVIF path (many Chinese brands)."
         },
         {
           "template": "rtsp://{user}:{password}@{ip}:{port}/live",
-          "score": 40,
+          "score": 60,
           "description": "Common third-party default."
+        },
+        {
+          "template": "rtsp://{user}:{password}@{ip}:{port}/live/ch00_0",
+          "score": 55,
+          "description": "Generic channel 0 main stream."
+        },
+        {
+          "template": "rtsp://{user}:{password}@{ip}:{port}/video1",
+          "score": 50,
+          "description": "Simple numeric path (Foscam, some others)."
+        },
+        {
+          "template": "rtsp://{user}:{password}@{ip}:{port}/h264",
+          "score": 45,
+          "description": "Bare codec path."
+        },
+        {
+          "template": "rtsp://{user}:{password}@{ip}:{port}/cam/1",
+          "score": 40,
+          "description": "Numbered camera path."
         }
       ]
     }
