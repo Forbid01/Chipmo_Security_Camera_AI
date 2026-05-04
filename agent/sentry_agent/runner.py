@@ -37,6 +37,7 @@ logger = logging.getLogger("sentry_agent.runner")
 
 REGISTER_PATH = "/api/v1/agents/register"
 HEARTBEAT_PATH_TEMPLATE = "/api/v1/agents/{agent_id}/heartbeat"
+DISCOVERIES_PATH_TEMPLATE = "/api/v1/agents/{agent_id}/discoveries"
 
 # Retry tuning — deliberately mild. The server's SLA for register is
 # seconds, so we keep the backoff short. A failing heartbeat will
@@ -45,6 +46,11 @@ REGISTER_MAX_ATTEMPTS = 5
 REGISTER_BACKOFF_BASE = 2.0
 REGISTER_BACKOFF_CAP = 30.0
 REQUEST_TIMEOUT_S = 10.0
+
+# How often to re-run the ONVIF WS-Discovery probe. 5 minutes is
+# enough to catch cameras that come online after agent start without
+# hammering the LAN with multicast traffic.
+PROBE_INTERVAL_S = 300.0
 
 
 class AgentStartupError(RuntimeError):
@@ -142,6 +148,67 @@ def _register(client: httpx.Client, config: AgentConfig) -> dict[str, Any]:
     )
 
 
+def _run_probe_and_send(
+    client: httpx.Client, config: AgentConfig, agent_id: str
+) -> None:
+    """Run ONVIF WS-Discovery probe and POST results to the server.
+
+    Designed to run in a daemon thread — errors are logged and swallowed
+    so a probe failure never takes the heartbeat loop down.
+    """
+    try:
+        from sentry_agent.probe import probe  # local import keeps startup fast
+
+        results = probe()
+        if not results:
+            logger.info("probe_no_cameras_found")
+            return
+
+        cameras = [
+            {
+                "ip": r.ip,
+                "port": r.port,
+                "xaddrs": list(r.xaddrs),
+                "scopes": list(r.scopes),
+                "manufacturer_id": r.manufacturer_id,
+                "manufacturer_display": r.manufacturer_display,
+                "model_hint": r.model_hint,
+                "mac_oui": r.mac_oui,
+                "extras": r.extras,
+            }
+            for r in results
+        ]
+        path = DISCOVERIES_PATH_TEMPLATE.format(agent_id=agent_id)
+        resp = client.post(
+            path,
+            json={"cameras": cameras},
+            headers=_headers(config),
+            timeout=REQUEST_TIMEOUT_S,
+        )
+        if resp.status_code == 204:
+            logger.info("discoveries_sent", extra={"count": len(cameras)})
+        else:
+            logger.warning(
+                "discoveries_send_failed",
+                extra={"status": resp.status_code, "body": resp.text[:200]},
+            )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("probe_error", extra={"error": str(exc)})
+
+
+def _start_probe_thread(
+    client: httpx.Client, config: AgentConfig, agent_id: str
+) -> threading.Thread:
+    t = threading.Thread(
+        target=_run_probe_and_send,
+        args=(client, config, agent_id),
+        daemon=True,
+        name="sentry-probe",
+    )
+    t.start()
+    return t
+
+
 def _send_heartbeat(
     client: httpx.Client, config: AgentConfig, agent_id: str
 ) -> dict[str, Any] | None:
@@ -219,6 +286,11 @@ def run(config: AgentConfig, *, stop_after_s: float | None = None) -> int:
         agent_id = str(register_body["agent_id"])
         interval = int(register_body.get("heartbeat_interval_s", 60))
 
+        # Kick off an initial ONVIF probe immediately after registration
+        # so cameras appear in the UI without waiting a full cycle.
+        _start_probe_thread(client, config, agent_id)
+        last_probe_at = time.monotonic()
+
         # RTSP/YOLO pipelines attach here — they take the same `stop`
         # event so shutdown stays single-signal. The `CaptureWorker`
         # scaffold lives in `sentry_agent.capture`; T4-20 will add the
@@ -243,6 +315,12 @@ def run(config: AgentConfig, *, stop_after_s: float | None = None) -> int:
                 return 2
             if body and "next_heartbeat_in_s" in body:
                 interval = int(body["next_heartbeat_in_s"])
+
+            # Re-probe on schedule so cameras that come online after
+            # agent start are discovered without a restart.
+            if time.monotonic() - last_probe_at >= PROBE_INTERVAL_S:
+                _start_probe_thread(client, config, agent_id)
+                last_probe_at = time.monotonic()
 
             # Bound the wait so signals land promptly even with a long
             # server-suggested interval.

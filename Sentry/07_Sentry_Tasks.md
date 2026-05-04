@@ -145,7 +145,7 @@
 
 | ID | Title | Priority | Depends on | Status | DoD |
 |---|---|---|---|---|---|
-| T8-01 | OSNet embedding extractor (inference worker) | P1 | — | todo | 512-dim vector per detected person. Latency <100ms. |
+| T8-01 | OSNet embedding extractor (inference worker) | P1 | — | done | 512-dim vector per detected person. Latency <100ms. |
 | T8-02 | Qdrant per-tenant collection manager | P1 | T1-01 | todo | `reid_tenant_{uuid}` collection auto-create. Drop on tenant delete. |
 | T8-03 | Similarity matching (cosine >0.75, 5s window) | P1 | T8-01, T8-02 | todo | Return: existing_person_id OR new. Action log merge. |
 | T8-04 | Redis person state (30-min expire) | P1 | T1-12 | todo | Key: `tenant:{uuid}:store:{id}:person:{pid}`. Hash: action history, score, last_seen. |

@@ -103,7 +103,7 @@ class AlertRepository:
 
     async def insert_alert(
         self,
-        person_id: int,
+        person_id: str,
         image_path: str,
         reason: str,
         organization_id: int = None,

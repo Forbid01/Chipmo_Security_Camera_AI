@@ -9,7 +9,8 @@
       "PowerShell(& \"$env:LOCALAPPDATA\\\\Programs\\\\Python\\\\Python313\\\\python.exe\" -m pytest -q 2>&1 | Select-Object -Last 5; & \"$env:LOCALAPPDATA\\\\Programs\\\\Python\\\\Python313\\\\python.exe\" -m ruff check shoplift_detector/ tests/ alembic/ 2>&1 | Select-Object -Last 5)",
       "PowerShell(& \"$env:LOCALAPPDATA\\\\Programs\\\\Python\\\\Python313\\\\python.exe\" -c \"import yaml; print\\(yaml.__version__\\)\" 2>&1)",
       "PowerShell(& \"$env:LOCALAPPDATA\\\\Programs\\\\Python\\\\Python313\\\\python.exe\" -m pip install pyyaml 2>&1 | Select-Object -Last 3)",
-      "PowerShell(& \"$env:LOCALAPPDATA\\\\Programs\\\\Python\\\\Python313\\\\python.exe\" -m pytest tests/test_observability_stack_config.py -v 2>&1 | Select-Object -Last 30)"
+      "PowerShell(& \"$env:LOCALAPPDATA\\\\Programs\\\\Python\\\\Python313\\\\python.exe\" -m pytest tests/test_observability_stack_config.py -v 2>&1 | Select-Object -Last 30)",
+      "Bash(python -m pytest tests/ -x --tb=short -q)"
     ]
   }
 }

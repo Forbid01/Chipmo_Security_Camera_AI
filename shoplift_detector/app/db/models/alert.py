@@ -25,7 +25,7 @@ class Alert(Base):
     __tablename__ = "alerts"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    person_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    person_id: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
     organization_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True, index=True
     )

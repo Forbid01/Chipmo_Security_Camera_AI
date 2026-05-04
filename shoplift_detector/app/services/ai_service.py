@@ -261,10 +261,38 @@ class ShopliftDetector:
                     db=db,
                 )
 
+                # ── Re-ID Phase 1: extract embedding + find handoff person_id ──
+                # Done BEFORE insert so the alert.person_id is set correctly
+                # from the start. Failures are non-critical: fall back to a
+                # freshly-generated P-{store}-{date}-{seq} ID.
+                reid_embedding = None
+                try:
+                    from app.services.reid_service import reid_service
+                    reid_embedding, matched_person_id = await reid_service.lookup_person_id(
+                        frame=frame_to_save,
+                        bbox=bbox,
+                        store_id=store_id or 0,
+                        camera_id=camera_id or 0,
+                        db=db,
+                    )
+                except Exception:
+                    matched_person_id = None
+                    logger.debug("reid_lookup_person_id_failed", exc_info=True)
+
+                if matched_person_id:
+                    person_id = matched_person_id
+                else:
+                    from app.services.person_id import person_id_generator
+                    try:
+                        person_id = await person_id_generator.generate(db, store_id or 0)
+                    except Exception:
+                        # Ultimate fallback: legacy track-id string
+                        person_id = str(person_track_id)
+
                 from app.db.repository.alerts import AlertRepository
 
                 alert_id = await AlertRepository(db).insert_alert(
-                    person_id=person_track_id,
+                    person_id=person_id,
                     image_path=image_url,
                     reason=reason,
                     camera_id=camera_id,
@@ -287,6 +315,7 @@ class ShopliftDetector:
                             "alert_id": alert_id,
                             "store_id": store_id,
                             "camera_id": camera_id,
+                            "person_id": person_id,
                         })
                     except Exception:
                         pass  # SSE is non-critical
@@ -311,9 +340,7 @@ class ShopliftDetector:
                 )
 
                 # Persist the VLM caption (if any) so the frontend can
-                # render it next to the alert. Done inside the same DB
-                # session so we don't open a second connection just to
-                # write one row.
+                # render it next to the alert.
                 if pipeline_decision.vlm_verdict is not None:
                     try:
                         await rag_vlm_pipeline.persist_vlm_annotation(
@@ -327,22 +354,22 @@ class ShopliftDetector:
                             alert_id,
                         )
 
-                # Cross-camera Re-ID: extract appearance embedding for the
-                # alerted person and search for matches on other cameras.
-                # Runs async in the same event loop; failures never surface
-                # to the caller (non-critical feature).
-                try:
-                    from app.services.reid_service import reid_service
-                    await reid_service.process_alert_embedding(
-                        frame=frame_to_save,
-                        bbox=bbox,
-                        store_id=store_id or 0,
-                        camera_id=camera_id or 0,
-                        track_id=int(yolo_id),
-                        alert_id=alert_id,
-                    )
-                except Exception:
-                    logger.debug("reid_process_alert_embedding_failed", exc_info=True)
+                # ── Re-ID Phase 2: store embedding + register handoff ──
+                if reid_embedding is not None:
+                    try:
+                        await reid_service.store_embedding_for_alert(
+                            db,
+                            embedding=reid_embedding,
+                            store_id=store_id or 0,
+                            camera_id=camera_id or 0,
+                            track_id=int(yolo_id),
+                            alert_id=alert_id,
+                            bbox=bbox,
+                            captured_at=datetime.now(UTC),
+                        )
+                        reid_service.handoff_tracker.record(store_id or 0, person_id)
+                    except Exception:
+                        logger.debug("reid_store_embedding_failed", exc_info=True)
 
             # Suppressed alerts stay in the DB (so dashboards can chart
             # suppression rate) but never fire downstream notifications.

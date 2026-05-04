@@ -9,6 +9,7 @@ import VerifyPage from './pages/Onboarding/VerifyPage';
 import PlanPage from './pages/Onboarding/PlanPage';
 import ReadyPage from './pages/Onboarding/ReadyPage';
 import ConnectCamerasPage from './pages/Onboarding/ConnectCamerasPage';
+import DownloadInstallerPage from './pages/Onboarding/DownloadInstallerPage';
 import Dashboard from './pages/Dashboard';
 import DashboardAdmin from './pages/DashboardAdmin';
 import Settings from './pages/Settings';
@@ -46,6 +47,10 @@ function App() {
         <Route path="/plan" element={<PlanPage />} />
         <Route path="/ready" element={<ReadyPage />} />
         <Route path="/connect-cameras" element={<ConnectCamerasPage />} />
+        <Route
+          path="/install-agent"
+          element={isAuthenticated ? <DownloadInstallerPage /> : <Navigate to="/login" />}
+        />
 
         <Route 
           path="/forgot-password" 

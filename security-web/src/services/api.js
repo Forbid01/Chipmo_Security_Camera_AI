@@ -2,7 +2,7 @@ import axios from "axios";
 
 export const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL ||
-  "https://chipmosecuritycameraai-production.up.railway.app";
+  "https://web-production-cd0c7.up.railway.app";
 
 // Legacy video URLs (backward compat)
 export const VIDEO_FEED_URL = `${API_BASE_URL}/video_feed`;

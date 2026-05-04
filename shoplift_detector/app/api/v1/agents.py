@@ -18,6 +18,7 @@ from app.db.repository.agents import (
 )
 from app.db.session import DB
 from app.schemas.agent import (
+    AgentDiscoveriesRequest,
     AgentHeartbeatResponse,
     AgentRegisterRequest,
     AgentRegisterResponse,
@@ -25,6 +26,7 @@ from app.schemas.agent import (
 from app.services.onboarding_events import (
     AGENT_HEARTBEAT,
     AGENT_REGISTERED,
+    CAMERA_DISCOVERED,
     broker,
     make_event,
 )
@@ -109,3 +111,51 @@ async def heartbeat(
         server_time=datetime.now(UTC),
         next_heartbeat_in_s=HEARTBEAT_INTERVAL_SECONDS,
     )
+
+
+@router.post(
+    "/{agent_id}/discoveries",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Submit ONVIF probe results; publishes camera_discovered events (T4-09 integration).",
+)
+async def submit_discoveries(
+    agent_id: UUID,
+    payload: AgentDiscoveriesRequest,
+    db: DB,
+    tenant: CurrentTenant,
+) -> None:
+    """Accept the batch of cameras found by the agent's WS-Discovery probe
+    and publish a `camera_discovered` event per camera to the onboarding
+    WebSocket stream so the frontend can render them in real time.
+
+    Reuses `record_heartbeat` to verify agent ownership — cross-tenant
+    agent IDs return 404, not 403, to avoid enumeration.
+    """
+    repo = AgentRepository(db)
+    ok = await repo.record_heartbeat(
+        agent_id=agent_id,
+        tenant_id=tenant["tenant_id"],
+    )
+    if not ok:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="agent not found",
+        )
+
+    for cam in payload.cameras:
+        await broker.publish(
+            str(tenant["tenant_id"]),
+            make_event(
+                CAMERA_DISCOVERED,
+                payload={
+                    "agent_id": str(agent_id),
+                    "ip": cam.ip,
+                    "port": cam.port,
+                    "xaddrs": cam.xaddrs,
+                    "manufacturer_id": cam.manufacturer_id,
+                    "manufacturer_display": cam.manufacturer_display,
+                    "model_hint": cam.model_hint,
+                    "mac_oui": cam.mac_oui,
+                },
+            ),
+        )

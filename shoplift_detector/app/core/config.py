@@ -198,7 +198,7 @@ class Settings(BaseSettings):
         return v
 
     @property
-    def async_database_url(self) -> str:
+    def async_(self) -> str:
         if self.DATABASE_URL:
             url = self.DATABASE_URL
             if url.startswith("postgres://"):

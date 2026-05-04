@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import {
   AlertTriangle,
   Camera,
   CheckCircle2,
   ChevronDown,
   ChevronUp,
+  Download,
   KeyRound,
   Loader2,
   Network,
@@ -91,7 +92,7 @@ function AgentStatusBar({ state }) {
     searching: {
       icon:  <Loader2 size={14} className="animate-spin text-slate-400" />,
       label: 'Сүлжээнээс Agent хайж байна…',
-      sub:   'Agent суулгасан компьютер асаалттай байгаа эсэхийг шалгана уу.',
+      sub:   null,   // rendered separately below with install link
       ring:  'border-slate-700/60 bg-slate-900/60',
       dot:   'bg-slate-500',
     },
@@ -123,7 +124,20 @@ function AgentStatusBar({ state }) {
       </div>
       <div>
         <p className="text-sm font-semibold text-slate-100">{cfg.label}</p>
-        <p className="text-xs text-slate-400 mt-0.5">{cfg.sub}</p>
+        {cfg.sub && <p className="text-xs text-slate-400 mt-0.5">{cfg.sub}</p>}
+        {state === 'searching' && (
+          <p className="mt-1 text-xs text-slate-400">
+            Agent суулгаагүй байгаа бол{' '}
+            <Link
+              to="/install-agent"
+              className="inline-flex items-center gap-1 font-semibold text-sky-400 underline-offset-2 hover:text-sky-300 hover:underline"
+            >
+              <Download size={11} />
+              энд дарж татаж авна уу
+            </Link>
+            .
+          </p>
+        )}
       </div>
     </div>
   );

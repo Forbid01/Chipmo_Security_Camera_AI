@@ -1,4 +1,5 @@
-"""Pydantic schemas for agent register + heartbeat (T4-07 / T4-08)."""
+"""Pydantic schemas for agent register + heartbeat (T4-07 / T4-08)
+and camera discovery submission (T4-09 integration)."""
 
 from __future__ import annotations
 
@@ -39,3 +40,27 @@ class AgentHeartbeatResponse(BaseModel):
     agent_id: UUID
     server_time: datetime
     next_heartbeat_in_s: int
+
+
+# ---------------------------------------------------------------------------
+# Discovery submission (T4-09 integration)
+# ---------------------------------------------------------------------------
+
+class DiscoveredCameraItem(BaseModel):
+    """One camera returned by the agent's ONVIF WS-Discovery probe."""
+
+    ip: str
+    port: int = 80
+    xaddrs: list[str] = Field(default_factory=list)
+    scopes: list[str] = Field(default_factory=list)
+    manufacturer_id: str | None = None
+    manufacturer_display: str | None = None
+    model_hint: str | None = None
+    mac_oui: str | None = None
+    extras: dict[str, Any] = Field(default_factory=dict)
+
+
+class AgentDiscoveriesRequest(BaseModel):
+    """Batch of cameras found during a single probe run."""
+
+    cameras: list[DiscoveredCameraItem]
